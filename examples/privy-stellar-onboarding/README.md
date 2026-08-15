@@ -315,8 +315,11 @@ trustline and enough USDC, so there was nothing for preflight to catch.
 ## What this deliberately omits
 
 - **Mainnet.** Testnet only, enforced structurally as described above.
-- **A backend.** No server, no database, no persistence. Reload and the UI state
-  is gone; the chain is the only record.
+- **A backend.** No server, no database, no account of what happened that this
+  app owns. The activity log and the contribution list survive a reload in
+  `localStorage`, but they are a convenience cache of what this browser did and
+  nothing reads them as truth: the chain is the only record, and every entry
+  links out to it.
 - **Rust and contract deployment.** The pool contract is consumed as a
   configured address and treated as an interface. It is built and deployed in
   the contract-side repos.

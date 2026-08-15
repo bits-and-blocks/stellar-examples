@@ -12,11 +12,12 @@ import {
   Operation,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { AccountBar } from "@/components/AccountBar";
 import { ActionButton } from "@/components/ActionButton";
 import { ActivityLog } from "@/components/ActivityLog";
 import { Card } from "@/components/Card";
+import { ContributionList } from "@/components/ContributionList";
 import { Footer } from "@/components/Footer";
 import { ResultPanel } from "@/components/ResultPanel";
 import { ExplorerLinks } from "@/components/ExplorerLinks";
@@ -53,10 +54,7 @@ import {
   useActivityLog,
   type LogEntry,
 } from "@/lib/ui/activity-log";
-import {
-  recordContribution,
-  useContributions,
-} from "@/lib/ui/contributions";
+import { recordContribution, useContributions } from "@/lib/ui/contributions";
 import { recordTrustlineTx, useTrustlineTx } from "@/lib/ui/trustline";
 import { ActionError, useActions } from "@/lib/ui/use-actions";
 
@@ -237,19 +235,48 @@ export default function Home() {
   const onCheckFaucet = () =>
     actions.run("faucet-refresh", async () => {
       if (!address) throw new Error("You do not have a wallet address yet.");
+
+      // What the balance was before the check. A balance above zero only says
+      // this wallet holds some, which it may have held for an hour; whether
+      // anything arrived is a question about the difference, and answering the
+      // first as though it were the second told people their claim had landed
+      // when it had not.
+      const before = balances?.address === address ? balances.usdc : null;
       const next = await refresh(address);
+      const held = next.usdc ?? "0";
 
       // Pressing this before going to the faucet is the easy slip to make, and
       // "0.0000000 USDC" states it as a fact rather than as something to fix.
-      if (!(Number(next.usdc ?? "0") > 0)) {
+      // A claim that has been made and has not landed yet looks identical from
+      // here, so both readings are offered rather than the wrong one asserted.
+      if (!(Number(held) > 0)) {
         return {
-          message: `No ${USDC_CODE} has reached your wallet yet. Open the Circle faucet above, choose Stellar, and paste the address from the bar at the top, then check again.`,
+          message: `No ${USDC_CODE} has reached your wallet yet. If you have just claimed some, give it a few seconds and check again — the faucet takes a moment to send it. If you have not, open the Circle faucet above, choose Stellar, and paste the address from the bar at the top.`,
           tone: "info" as const,
         };
       }
 
+      if (before !== null && Number(held) > Number(before)) {
+        // Stated to the seven places Horizon reports balances in, rather than
+        // to whatever a float subtraction produces.
+        const arrived = (Number(held) - Number(before)).toFixed(7);
+        return {
+          message: `${arrived} ${USDC_CODE} arrived. You now hold ${held} ${USDC_CODE}.`,
+        };
+      }
+
+      if (before !== null) {
+        return {
+          message: `Your wallet holds ${held} ${USDC_CODE}, and nothing new has arrived since the last check. If you have just claimed some, give it a few seconds and check again.`,
+          tone: "info" as const,
+        };
+      }
+
+      // No earlier reading to compare against, so the balance is all that can
+      // honestly be said.
       return {
-        message: `The faucet came through: you hold ${next.usdc} ${USDC_CODE}.`,
+        message: `Your wallet holds ${held} ${USDC_CODE}.`,
+        tone: "info" as const,
       };
     });
 
@@ -583,50 +610,18 @@ export default function Home() {
             </ActionButton>
           </div>
 
-          <ResultPanel result={actions.get("contribute").result} />
+          {/* Success is the list's to state: what was sent arrives at the top
+              of it with its own links, dated, a moment later. Saying it in a
+              sentence here as well answered the same question twice. */}
+          <ResultPanel
+            result={
+              actions.get("contribute").result?.ok
+                ? undefined
+                : actions.get("contribute").result
+            }
+          />
 
-          <AnimatePresence initial={false}>
-            {contributions.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                style={{ overflow: "hidden" }}
-              >
-                <p className="section-label" style={{ margin: "0 0 12px" }}>
-                  Your contributions, kept in this browser
-                </p>
-                <ul className="list">
-                  <AnimatePresence initial={false}>
-                    {contributions.map((entry) => (
-                      <motion.li
-                        key={entry.hash}
-                        layout
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <span className="list-line">
-                          <span
-                            className="list-amount"
-                            title={new Date(entry.at).toLocaleString()}
-                          >
-                            {entry.amount} {USDC_CODE}
-                          </span>
-                          <span className="mono list-hash">
-                            {entry.hash}
-                          </span>
-                        </span>
-                        <ExplorerLinks hash={entry.hash} compact />
-                      </motion.li>
-                    ))}
-                  </AnimatePresence>
-                </ul>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <ContributionList entries={contributions} code={USDC_CODE} />
         </Card>
 
         <Card

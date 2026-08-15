@@ -1,7 +1,9 @@
 import { GithubIcon } from "./icons";
 
+/** Where this example lives now. The standalone repository it was developed in
+ *  is archived, and only the README's provenance table still points there. */
 export const REPO_URL =
-  "https://github.com/bits-and-blocks/privy-stellar-onboarding";
+  "https://github.com/bits-and-blocks/stellar-examples/tree/main/examples/privy-stellar-onboarding";
 
 export function Footer() {
   return (
