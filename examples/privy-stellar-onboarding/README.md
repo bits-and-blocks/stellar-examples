@@ -4,8 +4,10 @@ Email login to funded testnet contribution in one flow: Privy embedded wallet,
 then test USDC into a pool via the Stellar Asset Contract with transfer results
 checked. The commit history is the integration timer.
 
-**Status: Phase 0 complete.** Scaffold, testnet-only network config, and green
-CI. No wallet integration yet — see [Integration timer](#integration-timer).
+**Status: Phase 1 complete.** Email login to a signed, confirmed testnet
+transaction from a Privy embedded wallet, with no seed phrase at any point.
+Measured at **15 minutes 8 seconds** — see
+[Integration timer](#integration-timer).
 
 ## The claim this validates
 
@@ -106,23 +108,79 @@ request. The build takes no secrets.
 
 ## Integration timer
 
-| | Commit | Timestamp |
+**15 minutes 8 seconds**, from the end of setup to a confirmed transaction on
+testnet.
+
+| | Evidence | Time (UTC) |
 | --- | --- | --- |
-| Start | `integration start` | _pending Phase 1_ |
-| End | `first signed testnet tx` | _pending Phase 1_ |
-| **Elapsed** | | _pending Phase 1_ |
+| Start | commit [`c546ce2`](../../commit/c546ce2), the last pre-integration commit | 2026-08-15 00:19:54 |
+| End | ledger 4146515, [tx `1fe8822…`](https://stellar.expert/explorer/testnet/tx/1fe8822065555a7c716ba7514908fa899d15a40593984aa7277b0e5811c84c4d) | 2026-08-15 00:35:02 |
 
-For the measurement to mean anything, the baseline has to be stated. Everything
-committed before `integration start` is setup that is not specific to Privy: the
-Next.js scaffold, CI, and this document. No chain or wallet dependency is
-installed before the timer starts — `@privy-io/react-auth` and
-`@stellar/stellar-sdk` both arrive in the `integration start` commit — so the
-elapsed time covers the real work, including the signature glue above.
+### Why these endpoints, and not two commit hashes
 
-## Contribution transactions
+The brief called for commit-to-commit timing. The end marker here is a ledger
+close time instead, for a reason worth stating: **a repository owner can set any
+commit date they like, and the person reading this has no way to check.** A
+ledger close time is not something this repo controls. Anyone can fetch it:
 
-_Pending Phase 2._ Successful contribution hashes will be listed here as
-stellar.expert links.
+```bash
+curl -s https://horizon-testnet.stellar.org/transactions/1fe8822065555a7c716ba7514908fa899d15a40593984aa7277b0e5811c84c4d \
+  | grep created_at
+```
+
+The start marker is a commit, because "when did setup end" is a claim about this
+repo and the commit log is the right record for it. Using the *last
+pre-integration* commit rather than a `integration start` marker also makes the
+number a conservative upper bound: it counts the gap before work resumed as
+integration time, so the real figure is lower.
+
+### What the 15 minutes does and does not include
+
+**Inside the window:** installing `@privy-io/react-auth` and
+`@stellar/stellar-sdk`, writing the signature glue, wiring email login, wallet
+creation, Friendbot funding and payment submission, and getting a transaction
+accepted by Horizon.
+
+**Outside the window, in Phase 0:** working out that Stellar is Tier 2 and what
+that implies — which is the part that would mislead a reader if it went
+unmentioned. Knowing in advance that you need `useCreateWallet`, `useSignRawHash`
+and a `DecoratedSignature` wrapper is most of the problem. That research is
+written up above precisely so the next person starts where this timer started.
+
+**Also outside the window:** the work was assisted by an AI coding agent. Take
+the number as evidence that the integration is small and well-specified — one
+adapter function and four hook calls — rather than as an estimate of how long it
+takes a person typing unaided.
+
+### Decision gate: passed
+
+Phase 1 was a gate. If Privy's embedded wallet could not produce a signature
+Horizon accepts, the plan was to stop, swap to Stellar Wallets Kit, and revise
+the claim. It signed and Horizon accepted it, so the flow continues on Privy.
+
+## Verifying the signature glue without Privy
+
+[`lib/stellar/sign.ts`](lib/stellar/sign.ts) is the only component that can
+silently produce an invalid transaction, so it was tested against real testnet
+with a local `Keypair` substituted for Privy — same interface, 32-byte hash in
+and 64-byte signature out. Horizon accepted the result
+([tx `e477097…`](https://stellar.expert/explorer/testnet/tx/e47709761bf1351e38c4ad5435963c9cca05561e4573b368d5f7ef82f1d3c0c5)),
+which isolates the `DecoratedSignature` construction, the hint derivation and
+the signature-base hashing from anything Privy does.
+
+That mattered for debugging order: with the glue independently confirmed, a
+failure in the real flow could only be Privy or the app wiring.
+
+## Transactions
+
+Every transaction below was signed by a key held in a Privy embedded wallet,
+created from an email address with no seed phrase shown at any point.
+
+| Phase | What it proves | Transaction |
+| --- | --- | --- |
+| 1 | A Privy-held key produces a signature Horizon accepts | [`1fe8822…`](https://stellar.expert/explorer/testnet/tx/1fe8822065555a7c716ba7514908fa899d15a40593984aa7277b0e5811c84c4d) |
+
+_Phase 2 contribution hashes will be added here._
 
 ## What this deliberately omits
 
