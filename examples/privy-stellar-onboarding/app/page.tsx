@@ -334,7 +334,6 @@ export default function Home() {
                 disabled={busy}
                 variant="primary"
                 pending="Creating"
-                done="Created"
                 icon={<SparkIcon />}
               >
                 Create wallet
@@ -357,8 +356,6 @@ export default function Home() {
                   disabled={busy}
                   variant={xlm === null ? "primary" : "default"}
                   pending="Asking Friendbot"
-                  done="Funded"
-                  unchanged="Already funded"
                 >
                   {xlm === null ? "Get test XLM" : "Ask Friendbot again"}
                 </ActionButton>
@@ -378,7 +375,6 @@ export default function Home() {
                   onClick={onSendPayment}
                   disabled={busy}
                   pending="Signing"
-                  done="Sent"
                 >
                   Send 1 XLM to myself
                 </ActionButton>
@@ -399,7 +395,6 @@ export default function Home() {
                   disabled={busy || hasTrustline}
                   variant={hasTrustline ? "done" : "primary"}
                   pending="Switching on"
-                  done="Switched on"
                   icon={hasTrustline ? <CheckIcon size={13} /> : undefined}
                 >
                   {hasTrustline
@@ -432,7 +427,6 @@ export default function Home() {
                   onClick={onRefreshBalances("faucet-refresh")}
                   disabled={busy}
                   pending="Checking"
-                  done="Updated"
                 >
                   I claimed it, check my balance
                 </ActionButton>
@@ -479,7 +473,6 @@ export default function Home() {
                   disabled={busy}
                   variant="primary"
                   pending="Sending"
-                  done="Sent"
                 >
                   Contribute
                 </ActionButton>
@@ -544,7 +537,6 @@ export default function Home() {
                   })}
                   disabled={busy}
                   pending="Sending"
-                  failed="Failed, as expected"
                 >
                   Too much, with the check
                 </ActionButton>
@@ -556,7 +548,6 @@ export default function Home() {
                   })}
                   disabled={busy}
                   pending="Sending"
-                  failed="Failed, as expected"
                 >
                   Too much, no check
                 </ActionButton>

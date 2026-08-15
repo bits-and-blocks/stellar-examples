@@ -34,7 +34,9 @@ export function Card({ step, title, note, done, children }: Props) {
         </div>
       </header>
 
-      <div className="card-body">{children}</div>
+      <div className={`card-body${step !== undefined ? " card-body-step" : ""}`}>
+        {children}
+      </div>
     </motion.section>
   );
 }

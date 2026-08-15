@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { ContributionError, describeFailure } from "@/lib/stellar/errors";
 
 export type ActionStatus = "idle" | "pending" | "success" | "info" | "error";
@@ -31,47 +31,30 @@ export type Success = { message: string; tx?: string; tone?: Tone } | void;
 
 const IDLE: Entry = { status: "idle" };
 
-/** How long a button keeps its check or cross before going back to normal. */
-const FLASH_MS = 2200;
-
 /**
  * Tracks every button's own status and its own result.
  *
  * One shared "busy" flag used to be enough, but it meant a result rendered far
  * from the button that produced it. Keying by action id lets each section show
- * its own spinner, its own checkmark, and its own message in place.
+ * its own spinner and its own result in place.
+ *
+ * A result is final once it arrives: it stays until the same action runs again
+ * and replaces it. Nothing here expires on a timer.
  */
 export function useActions(
   onNote?: (message: string, tone: Tone | "error") => void,
 ) {
   const [entries, setEntries] = useState<Record<string, Entry>>({});
-  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  useEffect(() => {
-    const pending = timers.current;
-    return () => {
-      Object.values(pending).forEach(clearTimeout);
-    };
-  }, []);
-
-  const settle = useCallback((id: string, entry: Entry) => {
-    setEntries((current) => ({ ...current, [id]: entry }));
-
-    clearTimeout(timers.current[id]);
-    timers.current[id] = setTimeout(() => {
-      // The status goes quiet again but the result stays on screen, so the
-      // section keeps its explanation without the button looking stuck.
-      setEntries((current) => ({
-        ...current,
-        [id]: { status: "idle", result: current[id]?.result },
-      }));
-    }, FLASH_MS);
-  }, []);
+  const settle = useCallback(
+    (id: string, entry: Entry) =>
+      setEntries((current) => ({ ...current, [id]: entry })),
+    [],
+  );
 
   const run = useCallback(
     async (id: string, action: () => Promise<Success>) => {
-      clearTimeout(timers.current[id]);
-      setEntries((current) => ({ ...current, [id]: { status: "pending" } }));
+      settle(id, { status: "pending" });
 
       try {
         const success = await action();

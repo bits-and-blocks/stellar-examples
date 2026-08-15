@@ -153,7 +153,7 @@ function Balance({
             className={`balance-value${value ? "" : " empty"}`}
             title={value ?? empty}
           >
-            {value ? trim(value) : empty}
+            {value ? exact(value) : empty}
           </motion.span>
         </AnimatePresence>
       )}
@@ -192,9 +192,20 @@ function shorten(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-6)}`;
 }
 
-/** Stellar reports 7 decimals. Two is enough to read at a glance. */
-function trim(value: string) {
-  const asNumber = Number(value);
+/**
+ * Stellar reports 7 decimals. Every one of them is kept: rounding to two turns
+ * a balance of 9.9999999 into "10", which reads as money the wallet does not
+ * have. Only trailing zeros go, which shortens the common case without
+ * changing a digit, and the integer part picks up thousands separators.
+ */
+function exact(value: string) {
+  const [whole, fraction = ""] = value.split(".");
+  const asNumber = Number(whole);
   if (!Number.isFinite(asNumber)) return value;
-  return asNumber.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  const grouped = asNumber.toLocaleString(undefined, {
+    maximumFractionDigits: 0,
+  });
+  const kept = fraction.replace(/0+$/, "");
+  return kept ? `${grouped}.${kept}` : grouped;
 }

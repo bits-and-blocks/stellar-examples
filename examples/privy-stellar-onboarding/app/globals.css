@@ -400,16 +400,20 @@ code,
   margin-bottom: 0;
 }
 
-/* Lines the body up under the title rather than the step marker. */
 .card-body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Lines the body up under the title rather than the step marker. Only cards
+   that actually show a step marker are indented. */
+.card-body-step {
   padding-left: 36px;
 }
 
 @media (max-width: 30rem) {
-  .card-body {
+  .card-body-step {
     padding-left: 0;
   }
 }
@@ -535,9 +539,9 @@ code,
 }
 
 /* A step that is already done. Not dimmed like a plain disabled button: the
-   state is an answer ("this is switched on"), not an unavailable control. */
-.btn-done,
-.btn.is-success:not(:disabled) {
+   state is an answer ("this is switched on"), not an unavailable control.
+   Durable, unlike the two-second flash that used to sit alongside it. */
+.btn-done {
   background: var(--ok-soft);
   border-color: var(--ok-line-soft);
   color: var(--ok-text-2);
@@ -552,18 +556,6 @@ code,
   background: var(--ok-fill-hover);
   border-color: var(--ok-line);
   color: var(--ok-text-2);
-}
-
-.btn.is-info:not(:disabled) {
-  background: var(--surface-2);
-  border-color: var(--line-pill);
-  color: var(--muted);
-}
-
-.btn.is-error:not(:disabled) {
-  background: var(--err-soft);
-  border-color: var(--err-line);
-  color: var(--err);
 }
 
 /* ---------- input ---------- */
@@ -639,6 +631,21 @@ code,
   border-color: var(--err-line);
   background: var(--err-soft);
   color: var(--err-text);
+}
+
+/* An outcome that went fine, set as a line rather than a panel. Six filled
+   boxes down the page repeated what the buttons above them had just said and
+   left the steps themselves competing for attention. The tinted icon carries
+   how it went; the sentence carries what happened. Errors keep the box. */
+.result-flat {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--secondary-2);
+}
+
+.result-flat .result-title {
+  font-weight: 500;
 }
 
 .result-icon {

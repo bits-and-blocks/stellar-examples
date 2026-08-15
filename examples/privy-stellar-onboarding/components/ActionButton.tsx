@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ActionStatus } from "@/lib/ui/use-actions";
-import { AlertIcon, CheckIcon, NoChangeIcon, SpinnerIcon } from "./icons";
+import { SpinnerIcon } from "./icons";
 
 type Props = {
   status: ActionStatus;
@@ -11,11 +11,6 @@ type Props = {
   children: ReactNode;
   /** Shown while the action runs, e.g. "Signing". */
   pending?: string;
-  /** Shown for a moment after it works, e.g. "Sent". */
-  done?: string;
-  /** Shown when it completed but changed nothing. */
-  unchanged?: string;
-  failed?: string;
   disabled?: boolean;
   /** "done" is a step already complete: stated rather than dimmed. */
   variant?: "primary" | "default" | "quiet" | "done";
@@ -24,18 +19,16 @@ type Props = {
 };
 
 /**
- * A button that reports on itself: spinner while running, check when it worked,
- * cross when it did not. The label swaps with the status so the feedback lands
- * where the click happened rather than somewhere further down the page.
+ * A button that shows only whether it is working. How it went is the result
+ * line's job: a button that flashed "Sent" above a panel that also said "Sent"
+ * was the same answer twice, and the button's copy expired after two seconds
+ * while the panel stayed. What outlives the click belongs below the button.
  */
 export function ActionButton({
   status,
   onClick,
   children,
   pending = "Working",
-  done = "Done",
-  unchanged = "No change",
-  failed = "Failed",
   disabled,
   variant = "default",
   size = "md",
@@ -43,33 +36,17 @@ export function ActionButton({
 }: Props) {
   const running = status === "pending";
 
-  const face =
-    status === "pending" ? (
-      <>
-        <SpinnerIcon />
-        {pending}
-      </>
-    ) : status === "success" ? (
-      <>
-        <CheckIcon />
-        {done}
-      </>
-    ) : status === "info" ? (
-      <>
-        <NoChangeIcon />
-        {unchanged}
-      </>
-    ) : status === "error" ? (
-      <>
-        <AlertIcon />
-        {failed}
-      </>
-    ) : (
-      <>
-        {icon}
-        {children}
-      </>
-    );
+  const face = running ? (
+    <>
+      <SpinnerIcon />
+      {pending}
+    </>
+  ) : (
+    <>
+      {icon}
+      {children}
+    </>
+  );
 
   return (
     <motion.button
@@ -87,16 +64,13 @@ export function ActionButton({
         variant === "quiet" ? "btn-quiet" : "",
         variant === "done" ? "btn-done" : "",
         size === "lg" ? "btn-lg" : "",
-        status === "success" && variant !== "primary" ? "is-success" : "",
-        status === "info" && variant !== "primary" ? "is-info" : "",
-        status === "error" && variant !== "primary" ? "is-error" : "",
       ]
         .filter(Boolean)
         .join(" ")}
     >
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.span
-          key={status}
+          key={running ? "pending" : "idle"}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
