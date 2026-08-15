@@ -43,7 +43,7 @@ export function describeFailure(failure: ContributionFailure): {
         ? {
             summary: "Your wallet cannot hold USDC yet.",
             remedy:
-              "Stellar makes you switch a token on before your wallet can hold it. Go back to step 3 and switch on USDC. It sets aside 0.5 XLM, which you get back if you ever switch it off.",
+              "Stellar makes you switch a token on before your wallet can hold it. Go back to step 4 and switch on USDC. It sets aside 0.5 XLM, which you get back if you ever switch it off.",
           }
         : {
             summary: "The pool cannot receive USDC.",
@@ -54,7 +54,7 @@ export function describeFailure(failure: ContributionFailure): {
       return {
         summary: `Not enough USDC. You have ${failure.have} and this would send ${failure.want}.`,
         remedy:
-          "Claim free test USDC from the Circle faucet in step 4, then check your balance again.",
+          "Claim free test USDC from the Circle faucet in step 5, then check your balance again.",
       };
 
     case "simulation-failed":

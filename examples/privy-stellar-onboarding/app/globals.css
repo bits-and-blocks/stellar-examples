@@ -439,6 +439,15 @@ code,
   opacity: 1;
 }
 
+/* The accent means "this is the thing to do next", which a locked step is by
+   definition not. With the whole list on screen from the first visit, three
+   steps wore it at once and none of them were the live one. */
+.card-locked .btn-primary {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--fg-2);
+}
+
 .locked-note {
   display: flex;
   align-items: center;

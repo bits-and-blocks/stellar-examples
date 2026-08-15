@@ -298,27 +298,38 @@ export default function Home() {
   const email = user?.email?.address ?? user?.id ?? "Signed in";
   const busy = actions.busy;
 
-  // Both locks below are read off balances, which are not in hand on the first
-  // render. Stating a reason from what has not been read yet would flash the
-  // wrong one at someone whose wallet is perfectly ready, so the reason waits
-  // even though the buttons do not.
+  // The balance-derived locks below are read off something that is not in hand
+  // on the first render. Stating a reason from what has not been read yet would
+  // flash the wrong one at someone whose wallet is perfectly ready, so the
+  // reason waits even though the buttons do not.
   const known = !loadingBalances;
+
+  // Every step is gated on the one that makes it possible, and each reason
+  // below is resolved to the earliest unmet condition rather than the nearest
+  // one: told to switch USDC on when there is no wallet at all, you would go
+  // to a step that is itself locked.
+  const needsWallet =
+    address === null
+      ? "Create your wallet in step 1 first. Every step below acts on it."
+      : undefined;
 
   // Nothing can touch a wallet the network has never heard of: signing needs a
   // fee, and a trustline needs a fee and 0.5 XLM set aside on top. Left open,
   // both steps failed with the network's own words about a missing account,
   // which reads as a broken app rather than as a skipped step.
   const needsFunding =
-    known && xlm === null
-      ? "Get some test XLM in step 1 first. Until something funds it your wallet does not exist on the network, and it cannot pay a fee or set anything aside."
-      : undefined;
+    needsWallet ??
+    (known && xlm === null
+      ? "Get some test XLM in step 2 first. Until something funds it your wallet does not exist on the network, and it cannot pay a fee or set anything aside."
+      : undefined);
 
   // Everything from the faucet onwards moves USDC, and a wallet that has not
   // opted in cannot receive any of it.
   const needsTrustline =
-    known && !hasTrustline
-      ? `Switch ${USDC_CODE} on in step 3 first. Until you do, your wallet cannot receive or send it.`
-      : undefined;
+    needsFunding ??
+    (known && !hasTrustline
+      ? `Switch ${USDC_CODE} on in step 4 first. Until you do, your wallet cannot receive or send it.`
+      : undefined);
 
   if (!authenticated) {
     return (
@@ -389,261 +400,267 @@ export default function Home() {
           </p>
         </header>
 
-        {!address ? (
-          <Card
-            step={1}
-            title="Create your Stellar wallet"
-            note="This makes a wallet tied to your account. Privy holds the key, so there is nothing for you to back up."
-          >
-            <div className="row">
-              <ActionButton
-                status={actions.get("wallet").status}
-                onClick={onCreateWallet}
-                disabled={busy}
-                variant="primary"
-                pending="Creating"
-                icon={<SparkIcon />}
-              >
-                Create wallet
-              </ActionButton>
-            </div>
-            <ResultPanel result={actions.get("wallet").result} />
-          </Card>
-        ) : (
-          <>
-            <Card
-              step={1}
-              title="Get some test XLM"
-              note="XLM pays the network fees. Friendbot hands it out free on testnet."
-              done={xlm !== null}
+        <Card
+          step={1}
+          title="Create your Stellar wallet"
+          note="This makes a wallet tied to your account. Privy holds the key, so there is nothing for you to back up."
+          done={address !== null}
+        >
+          <div className="row">
+            <ActionButton
+              status={actions.get("wallet").status}
+              onClick={onCreateWallet}
+              disabled={busy || address !== null}
+              variant={address === null ? "primary" : "done"}
+              pending="Creating"
+              icon={address === null ? <SparkIcon /> : <CheckIcon size={13} />}
             >
-              <div className="row">
-                <ActionButton
-                  status={actions.get("fund").status}
-                  onClick={onFund}
-                  disabled={busy}
-                  variant={xlm === null ? "primary" : "default"}
-                  pending="Asking Friendbot"
-                >
-                  {xlm === null ? "Get test XLM" : "Ask Friendbot again"}
-                </ActionButton>
-              </div>
-              <ResultPanel result={actions.get("fund").result} />
-            </Card>
+              {address === null ? "Create wallet" : "Your wallet is ready"}
+            </ActionButton>
+          </div>
+          {/* Success is the button's to state, and the address it used to
+              report is in the bar at the top the moment it exists. */}
+          <ResultPanel
+            result={
+              actions.get("wallet").result?.ok
+                ? undefined
+                : actions.get("wallet").result
+            }
+          />
+        </Card>
 
-            <Card
-              step={2}
-              title="Check that signing works"
-              note="Send 1 XLM to yourself. Nothing leaves your wallet, and it proves your wallet can sign a real transaction."
-              done={signed}
-              locked={needsFunding}
+        <Card
+          step={2}
+          title="Get some test XLM"
+          note="XLM pays the network fees. Friendbot hands it out free on testnet."
+          done={xlm !== null}
+          locked={needsWallet}
+        >
+          <div className="row">
+            <ActionButton
+              status={actions.get("fund").status}
+              onClick={onFund}
+              disabled={busy || address === null}
+              variant={xlm === null ? "primary" : "default"}
+              pending="Asking Friendbot"
             >
-              <div className="row">
-                <ActionButton
-                  status={actions.get("sign").status}
-                  onClick={onSendPayment}
-                  disabled={busy || xlm === null}
-                  pending="Sending"
-                >
-                  Send 1 XLM to myself
-                </ActionButton>
-              </div>
-              <ResultPanel result={actions.get("sign").result} />
-            </Card>
+              {xlm === null ? "Get test XLM" : "Ask Friendbot again"}
+            </ActionButton>
+          </div>
+          <ResultPanel result={actions.get("fund").result} />
+        </Card>
 
-            <Card
-              step={3}
-              title={`Switch on ${USDC_CODE}`}
-              note={`Stellar makes you opt in to a token before your wallet can hold it. It sets aside 0.5 XLM, which you get back if you ever opt out. Skip this and every contribution below will fail.`}
-              done={hasTrustline}
-              locked={needsFunding}
+        <Card
+          step={3}
+          title="Check that signing works"
+          note="Send 1 XLM to yourself. Nothing leaves your wallet, and it proves your wallet can sign a real transaction."
+          done={signed}
+          locked={needsFunding}
+        >
+          <div className="row">
+            <ActionButton
+              status={actions.get("sign").status}
+              onClick={onSendPayment}
+              disabled={busy || xlm === null}
+              pending="Sending"
             >
-              <div className="row">
-                <ActionButton
-                  status={actions.get("trustline").status}
-                  onClick={onAddTrustline}
-                  disabled={busy || hasTrustline || xlm === null}
-                  variant={hasTrustline ? "done" : "primary"}
-                  pending="Switching on"
-                  icon={hasTrustline ? <CheckIcon size={13} /> : undefined}
-                >
-                  {hasTrustline
-                    ? `Your wallet can now hold ${USDC_CODE}`
-                    : `Switch on ${USDC_CODE}`}
-                </ActionButton>
-                {/* Kept beside the button rather than inside a result that
-                    expires, so the opt-in stays reachable after a reload. */}
-                {hasTrustline && trustlineTx && (
-                  <ExplorerLinks hash={trustlineTx} compact />
-                )}
-              </div>
-              {/* Success is the button's to state. Only a failure has anything
-                  left to say here. */}
-              <ResultPanel
-                result={
-                  actions.get("trustline").result?.ok
-                    ? undefined
-                    : actions.get("trustline").result
-                }
+              Send 1 XLM to myself
+            </ActionButton>
+          </div>
+          <ResultPanel result={actions.get("sign").result} />
+        </Card>
+
+        <Card
+          step={4}
+          title={`Switch on ${USDC_CODE}`}
+          note={`Stellar makes you opt in to a token before your wallet can hold it. It sets aside 0.5 XLM, which you get back if you ever opt out. Skip this and every contribution below will fail.`}
+          done={hasTrustline}
+          locked={needsFunding}
+        >
+          <div className="row">
+            <ActionButton
+              status={actions.get("trustline").status}
+              onClick={onAddTrustline}
+              disabled={busy || hasTrustline || xlm === null}
+              variant={hasTrustline ? "done" : "primary"}
+              pending="Switching on"
+              icon={hasTrustline ? <CheckIcon size={13} /> : undefined}
+            >
+              {hasTrustline
+                ? `Your wallet can now hold ${USDC_CODE}`
+                : `Switch on ${USDC_CODE}`}
+            </ActionButton>
+            {/* Kept beside the button rather than inside a result that
+                expires, so the opt-in stays reachable after a reload. */}
+            {hasTrustline && trustlineTx && (
+              <ExplorerLinks hash={trustlineTx} compact />
+            )}
+          </div>
+          {/* Success is the button's to state. Only a failure has anything
+              left to say here. */}
+          <ResultPanel
+            result={
+              actions.get("trustline").result?.ok
+                ? undefined
+                : actions.get("trustline").result
+            }
+          />
+        </Card>
+
+        <Card
+          step={5}
+          title={`Claim some test ${USDC_CODE}`}
+          note="Circle gives out free test tokens. Pick Stellar, paste your address from the bar at the top, then come back and refresh."
+          done={hasUsdc}
+          locked={needsTrustline}
+        >
+          <div className="row">
+            <a
+              href="https://faucet.circle.com"
+              target="_blank"
+              rel="noreferrer"
+              className="btn"
+              style={{ textDecoration: "none" }}
+            >
+              Open the Circle faucet
+              <ExternalIcon />
+            </a>
+            <ActionButton
+              status={actions.get("faucet-refresh").status}
+              onClick={onCheckFaucet}
+              disabled={busy || !hasTrustline}
+              pending="Checking"
+            >
+              I claimed it, check my balance
+            </ActionButton>
+          </div>
+          <ResultPanel result={actions.get("faucet-refresh").result} />
+        </Card>
+
+        <Card
+          step={6}
+          title="Contribute"
+          note={`Send ${USDC_CODE} from your wallet to the pool.`}
+          done={contributions.length > 0}
+          locked={needsTrustline}
+        >
+          {/* Where the money goes comes before the button that sends it. */}
+          <dl className="kv">
+            <dt>Goes to</dt>
+            <dd className="mono">
+              {POOL_ADDRESS}{" "}
+              <span className="aside">
+                (
+                {isContractAddress(POOL_ADDRESS)
+                  ? "a contract"
+                  : "a regular address, standing in for the pool"}
+                )
+              </span>
+            </dd>
+            <dt>Token</dt>
+            <dd className="mono">{USDC_SAC_ID}</dd>
+          </dl>
+
+          <div className="row">
+            <label className="field">
+              <input
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                disabled={!hasTrustline}
+                inputMode="decimal"
+                aria-label={`Amount of ${USDC_CODE} to contribute`}
               />
-            </Card>
-
-            <Card
-              step={4}
-              title={`Claim some test ${USDC_CODE}`}
-              note="Circle gives out free test tokens. Pick Stellar, paste your address from the bar at the top, then come back and refresh."
-              done={hasUsdc}
-              locked={needsTrustline}
+              <span className="field-suffix">{USDC_CODE}</span>
+            </label>
+            <ActionButton
+              status={actions.get("contribute").status}
+              onClick={onContribute("contribute")}
+              disabled={busy || !hasTrustline}
+              variant="primary"
+              pending="Sending"
             >
-              <div className="row">
-                <a
-                  href="https://faucet.circle.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn"
-                  style={{ textDecoration: "none" }}
-                >
-                  Open the Circle faucet
-                  <ExternalIcon />
-                </a>
-                <ActionButton
-                  status={actions.get("faucet-refresh").status}
-                  onClick={onCheckFaucet}
-                  disabled={busy || !hasTrustline}
-                  pending="Checking"
-                >
-                  I claimed it, check my balance
-                </ActionButton>
-              </div>
-              <ResultPanel result={actions.get("faucet-refresh").result} />
-            </Card>
+              Contribute
+            </ActionButton>
+          </div>
 
-            <Card
-              step={5}
-              title="Contribute"
-              note={`Send ${USDC_CODE} from your wallet to the pool.`}
-              done={contributions.length > 0}
-              locked={needsTrustline}
-            >
-              {/* Where the money goes comes before the button that sends it. */}
-              <dl className="kv">
-                <dt>Goes to</dt>
-                <dd className="mono">
-                  {POOL_ADDRESS}{" "}
-                  <span className="aside">
-                    (
-                    {isContractAddress(POOL_ADDRESS)
-                      ? "a contract"
-                      : "a regular address, standing in for the pool"}
-                    )
-                  </span>
-                </dd>
-                <dt>Token</dt>
-                <dd className="mono">{USDC_SAC_ID}</dd>
-              </dl>
+          <ResultPanel result={actions.get("contribute").result} />
 
-              <div className="row">
-                <label className="field">
-                  <input
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    disabled={!hasTrustline}
-                    inputMode="decimal"
-                    aria-label={`Amount of ${USDC_CODE} to contribute`}
-                  />
-                  <span className="field-suffix">{USDC_CODE}</span>
-                </label>
-                <ActionButton
-                  status={actions.get("contribute").status}
-                  onClick={onContribute("contribute")}
-                  disabled={busy || !hasTrustline}
-                  variant="primary"
-                  pending="Sending"
-                >
-                  Contribute
-                </ActionButton>
-              </div>
-
-              <ResultPanel result={actions.get("contribute").result} />
-
-              <AnimatePresence initial={false}>
-                {contributions.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                    style={{ overflow: "hidden" }}
-                  >
-                    <p className="section-label" style={{ margin: "0 0 12px" }}>
-                      Your contributions, kept in this browser
-                    </p>
-                    <ul className="list">
-                      <AnimatePresence initial={false}>
-                        {contributions.map((entry) => (
-                          <motion.li
-                            key={entry.hash}
-                            layout
-                            initial={{ opacity: 0, x: -8 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2 }}
+          <AnimatePresence initial={false}>
+            {contributions.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                style={{ overflow: "hidden" }}
+              >
+                <p className="section-label" style={{ margin: "0 0 12px" }}>
+                  Your contributions, kept in this browser
+                </p>
+                <ul className="list">
+                  <AnimatePresence initial={false}>
+                    {contributions.map((entry) => (
+                      <motion.li
+                        key={entry.hash}
+                        layout
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <span className="list-line">
+                          <span
+                            className="list-amount"
+                            title={new Date(entry.at).toLocaleString()}
                           >
-                            <span className="list-line">
-                              <span
-                                className="list-amount"
-                                title={new Date(entry.at).toLocaleString()}
-                              >
-                                {entry.amount} {USDC_CODE}
-                              </span>
-                              <span className="mono list-hash">
-                                {entry.hash}
-                              </span>
-                            </span>
-                            <ExplorerLinks hash={entry.hash} compact />
-                          </motion.li>
-                        ))}
-                      </AnimatePresence>
-                    </ul>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </Card>
+                            {entry.amount} {USDC_CODE}
+                          </span>
+                          <span className="mono list-hash">
+                            {entry.hash}
+                          </span>
+                        </span>
+                        <ExplorerLinks hash={entry.hash} compact />
+                      </motion.li>
+                    ))}
+                  </AnimatePresence>
+                </ul>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </Card>
 
-            <Card
-              step={6}
-              title="See what a failure looks like"
-              note={`Both buttons try to send 999999 ${USDC_CODE}, which you do not have, so both fail. The difference is what you are told. With the check on, you get a plain sentence. With it off, the error comes straight back from the network.`}
-              locked={needsTrustline}
+        <Card
+          step={7}
+          title="See what a failure looks like"
+          note={`Both buttons try to send 999999 ${USDC_CODE}, which you do not have, so both fail. The difference is what you are told. With the check on, you get a plain sentence. With it off, the error comes straight back from the network.`}
+          locked={needsTrustline}
+        >
+          <div className="row">
+            <ActionButton
+              status={actions.get("fail-checked").status}
+              onClick={onContribute("fail-checked", {
+                amountOverride: "999999",
+              })}
+              disabled={busy || !hasTrustline}
+              pending="Sending"
             >
-              <div className="row">
-                <ActionButton
-                  status={actions.get("fail-checked").status}
-                  onClick={onContribute("fail-checked", {
-                    amountOverride: "999999",
-                  })}
-                  disabled={busy || !hasTrustline}
-                  pending="Sending"
-                >
-                  Too much, with the check
-                </ActionButton>
-                <ActionButton
-                  status={actions.get("fail-unchecked").status}
-                  onClick={onContribute("fail-unchecked", {
-                    amountOverride: "999999",
-                    skipPreflight: true,
-                  })}
-                  disabled={busy || !hasTrustline}
-                  pending="Sending"
-                >
-                  Too much, no check
-                </ActionButton>
-              </div>
-              <ResultPanel result={actions.get("fail-checked").result} />
-              <ResultPanel result={actions.get("fail-unchecked").result} />
-            </Card>
-          </>
-        )}
+              Too much, with the check
+            </ActionButton>
+            <ActionButton
+              status={actions.get("fail-unchecked").status}
+              onClick={onContribute("fail-unchecked", {
+                amountOverride: "999999",
+                skipPreflight: true,
+              })}
+              disabled={busy || !hasTrustline}
+              pending="Sending"
+            >
+              Too much, no check
+            </ActionButton>
+          </div>
+          <ResultPanel result={actions.get("fail-checked").result} />
+          <ResultPanel result={actions.get("fail-unchecked").result} />
+        </Card>
 
         <ActivityLog entries={log} onClear={clearActivity} />
       </div>
