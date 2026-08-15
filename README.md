@@ -10,7 +10,7 @@ Each example is a **self-contained project** — its own dependencies, its own R
 
 | Example | What it demonstrates | Stack | Status |
 | --- | --- | --- | --- |
-| [privy-stellar-onboarding](examples/privy-stellar-onboarding) | Email login to a funded testnet contribution in one flow — Privy embedded wallet, then test USDC into a pool via the Stellar Asset Contract, with transfer results checked rather than assumed. | Next.js, TypeScript, Privy, `@stellar/stellar-sdk` | Spec |
+| [privy-stellar-onboarding](examples/privy-stellar-onboarding) | Email login to a funded testnet contribution in one flow — Privy embedded wallet, then test USDC into a pool via the Stellar Asset Contract, with transfer results checked rather than assumed. | Next.js, TypeScript, Privy, `@stellar/stellar-sdk` | Working |
 
 Status legend: **Spec** — written up, not yet built · **Building** · **Working** — runs against testnet
 

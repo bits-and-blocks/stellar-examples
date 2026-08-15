@@ -239,7 +239,7 @@ show the ugly error it is meant to show.
 ## Verifying the contribution path
 
 ```bash
-pnpm verify:contribution
+npm run verify:contribution
 ```
 
 [`scripts/verify-contribution.mts`](scripts/verify-contribution.mts) runs the
