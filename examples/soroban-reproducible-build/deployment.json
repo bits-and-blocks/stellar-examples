@@ -1,0 +1,12 @@
+{
+  "network": "testnet",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "contractId": "CBJFOB7VDLJV4GYWAO5CDTEKEV5RJG4P7SNSIFSNOYCRSQCMCQRR3YAZ",
+  "wasmHash": "4635aa0a0f7c126c37d725e8eff553f5633cbabbed3fa33e51a7a86ae89a65ec",
+  "builtWith": {
+    "image": "stellar/stellar-cli:27.1.0-rust1.97.1-slim-trixie@sha256:a8a41b70c69a074f62f0356d88ef2d0d721a517acb144ea76a2917bb62f2a7ae",
+    "platform": "linux/amd64"
+  },
+  "deployedAt": "2026-08-15T19:54:59Z"
+}

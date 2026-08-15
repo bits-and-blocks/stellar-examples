@@ -1,0 +1,19 @@
+{
+  "name": "soroban-reproducible-build",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Assert that a deployed Soroban contract's Wasm matches a rebuild from source in a digest-pinned container.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "//": "Deliberately no `build` script: the repo's generic matrix runs `npm run build --if-present` in every example, and this example's build needs Docker and belongs to its own workflow, not to a second job that would rebuild the same Wasm without comparing it.",
+    "build:wasm": "bash scripts/build.sh",
+    "deploy": "bash scripts/deploy.sh",
+    "check": "node scripts/check-deployed-hash.mjs",
+    "verify": "npm run build:wasm && npm run check",
+    "test:contract": "bash scripts/test.sh"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^16.2.0"
+  }
+}

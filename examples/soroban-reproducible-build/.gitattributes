@@ -1,0 +1,6 @@
+# The scripts run inside a Linux container and on Linux CI. A Windows checkout
+# with CRLF endings breaks them at the shebang, so pin LF regardless of the
+# checking-out machine's core.autocrlf.
+*.sh text eol=lf
+*.mjs text eol=lf
+build.env text eol=lf
