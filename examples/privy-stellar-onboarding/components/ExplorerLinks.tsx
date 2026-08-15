@@ -14,9 +14,16 @@ const icons = {
 export function ExplorerLinks({
   hash,
   compact,
+  /**
+   * "sm" is a pill sitting inside a result line or a list row. "md" is for
+   * links standing on a row of their own, where they line up with the button
+   * beside them rather than floating at half its height.
+   */
+  size = "sm",
 }: {
   hash: string;
   compact?: boolean;
+  size?: "sm" | "md";
 }) {
   return (
     <span className="row" style={{ gap: "8px" }}>
@@ -28,7 +35,7 @@ export function ExplorerLinks({
             href={explorer.txUrl(hash)}
             target="_blank"
             rel="noreferrer"
-            className="btn btn-sm"
+            className={`btn ${size === "md" ? "btn-quiet" : "btn-sm"}`}
             title={`View on ${explorer.name}`}
           >
             <Icon />

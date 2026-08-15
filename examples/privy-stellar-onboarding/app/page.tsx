@@ -493,7 +493,7 @@ export default function Home() {
             {/* Kept beside the button rather than inside a result that
                 expires, so the opt-in stays reachable after a reload. */}
             {hasTrustline && trustlineTx && (
-              <ExplorerLinks hash={trustlineTx} compact />
+              <ExplorerLinks hash={trustlineTx} compact size="md" />
             )}
           </div>
           {/* Success is the button's to state. Only a failure has anything
