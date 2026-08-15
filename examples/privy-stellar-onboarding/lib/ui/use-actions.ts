@@ -52,8 +52,13 @@ const IDLE: Entry = { status: "idle" };
  * is open, so nothing said here is lost when the line fades. Results that
  * carry explorer links are the exception and never expire, since the log does
  * not keep those.
+ *
+ * A success confirms what you just watched happen and is read at a glance. A
+ * notice or a failure is telling you something you did not know and usually
+ * asks you to do something about it, so it sits longer.
  */
-const RESULT_MS = 3000;
+const SUCCESS_MS = 3000;
+const NOTICE_MS = 5000;
 
 /**
  * Tracks every button's own status and its own result.
@@ -88,6 +93,11 @@ export function useActions(
     // links with it, so those stay until the step is run again.
     if (entry.result?.ok && entry.result.tx) return;
 
+    const delay =
+      entry.status === "info" || entry.status === "error"
+        ? NOTICE_MS
+        : SUCCESS_MS;
+
     timers.current[id] = setTimeout(() => {
       // The status stays as it landed. Only the sentence is dropped, so a
       // section that reads its own status still knows how the run went.
@@ -95,7 +105,7 @@ export function useActions(
         ...current,
         [id]: { status: current[id]?.status ?? "idle" },
       }));
-    }, RESULT_MS);
+    }, delay);
   }, []);
 
   const run = useCallback(

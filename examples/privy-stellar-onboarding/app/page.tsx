@@ -57,6 +57,7 @@ import {
   recordContribution,
   useContributions,
 } from "@/lib/ui/contributions";
+import { recordTrustlineTx, useTrustlineTx } from "@/lib/ui/trustline";
 import { ActionError, useActions } from "@/lib/ui/use-actions";
 
 export default function Home() {
@@ -81,8 +82,9 @@ export default function Home() {
   const wallet = findStellarWallet(user);
   const address = wallet?.address ?? null;
 
-  // Survives a reload, unlike everything else on this page.
+  // Survive a reload, unlike everything else on this page.
   const contributions = useContributions(address);
+  const trustlineTx = useTrustlineTx(address);
 
   const note = useCallback(
     (text: string, tone: LogEntry["tone"]) => recordActivity(text, tone),
@@ -212,7 +214,10 @@ export default function Home() {
     actions.run("trustline", async () => {
       if (!address) throw new Error("You do not have a wallet address yet.");
       const hash = await addTrustline(address, signRawHash);
+      recordTrustlineTx(address, hash);
       await refresh(address);
+      // The message still reaches the activity log. What it does not do is
+      // appear under the step, where the button already says this.
       return { message: `Your wallet can now hold ${USDC_CODE}.`, tx: hash };
     });
 
@@ -293,12 +298,27 @@ export default function Home() {
   const email = user?.email?.address ?? user?.id ?? "Signed in";
   const busy = actions.busy;
 
+  // Both locks below are read off balances, which are not in hand on the first
+  // render. Stating a reason from what has not been read yet would flash the
+  // wrong one at someone whose wallet is perfectly ready, so the reason waits
+  // even though the buttons do not.
+  const known = !loadingBalances;
+
+  // Nothing can touch a wallet the network has never heard of: signing needs a
+  // fee, and a trustline needs a fee and 0.5 XLM set aside on top. Left open,
+  // both steps failed with the network's own words about a missing account,
+  // which reads as a broken app rather than as a skipped step.
+  const needsFunding =
+    known && xlm === null
+      ? "Get some test XLM in step 1 first. Until something funds it your wallet does not exist on the network, and it cannot pay a fee or set anything aside."
+      : undefined;
+
   // Everything from the faucet onwards moves USDC, and a wallet that has not
-  // opted in cannot receive any of it. Left open, those steps fail in ways
-  // that look like the app is broken rather than like a step was skipped.
-  const needsTrustline = hasTrustline
-    ? undefined
-    : `Switch ${USDC_CODE} on in step 3 first. Until you do, your wallet cannot receive or send it.`;
+  // opted in cannot receive any of it.
+  const needsTrustline =
+    known && !hasTrustline
+      ? `Switch ${USDC_CODE} on in step 3 first. Until you do, your wallet cannot receive or send it.`
+      : undefined;
 
   if (!authenticated) {
     return (
@@ -416,13 +436,14 @@ export default function Home() {
               title="Check that signing works"
               note="Send 1 XLM to yourself. Nothing leaves your wallet, and it proves your wallet can sign a real transaction."
               done={signed}
+              locked={needsFunding}
             >
               <div className="row">
                 <ActionButton
                   status={actions.get("sign").status}
                   onClick={onSendPayment}
-                  disabled={busy}
-                  pending="Signing"
+                  disabled={busy || xlm === null}
+                  pending="Sending"
                 >
                   Send 1 XLM to myself
                 </ActionButton>
@@ -435,22 +456,36 @@ export default function Home() {
               title={`Switch on ${USDC_CODE}`}
               note={`Stellar makes you opt in to a token before your wallet can hold it. It sets aside 0.5 XLM, which you get back if you ever opt out. Skip this and every contribution below will fail.`}
               done={hasTrustline}
+              locked={needsFunding}
             >
               <div className="row">
                 <ActionButton
                   status={actions.get("trustline").status}
                   onClick={onAddTrustline}
-                  disabled={busy || hasTrustline}
+                  disabled={busy || hasTrustline || xlm === null}
                   variant={hasTrustline ? "done" : "primary"}
                   pending="Switching on"
                   icon={hasTrustline ? <CheckIcon size={13} /> : undefined}
                 >
                   {hasTrustline
-                    ? `${USDC_CODE} is switched on`
+                    ? `Your wallet can now hold ${USDC_CODE}`
                     : `Switch on ${USDC_CODE}`}
                 </ActionButton>
+                {/* Kept beside the button rather than inside a result that
+                    expires, so the opt-in stays reachable after a reload. */}
+                {hasTrustline && trustlineTx && (
+                  <ExplorerLinks hash={trustlineTx} compact />
+                )}
               </div>
-              <ResultPanel result={actions.get("trustline").result} />
+              {/* Success is the button's to state. Only a failure has anything
+                  left to say here. */}
+              <ResultPanel
+                result={
+                  actions.get("trustline").result?.ok
+                    ? undefined
+                    : actions.get("trustline").result
+                }
+              />
             </Card>
 
             <Card
