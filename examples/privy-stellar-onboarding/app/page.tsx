@@ -1,11 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
-import {
-  useCreateWallet,
-  useSignRawHash,
-} from "@privy-io/react-auth/extended-chains";
 import {
   Asset,
   BASE_FEE,
@@ -27,8 +22,8 @@ import {
   MailIcon,
   SparkIcon,
   SpinnerIcon,
+  WalletIcon,
 } from "@/components/icons";
-import { findStellarWallet } from "@/lib/privy/stellar-wallet";
 import {
   POOL_ADDRESS,
   USDC_CODE,
@@ -47,7 +42,6 @@ import {
   horizon,
 } from "@/lib/stellar/horizon";
 import { NETWORK_PASSPHRASE, explorerAccountUrl } from "@/lib/stellar/network";
-import { signWithPrivy } from "@/lib/stellar/sign";
 import {
   clearActivity,
   recordActivity,
@@ -57,11 +51,14 @@ import {
 import { recordContribution, useContributions } from "@/lib/ui/contributions";
 import { recordTrustlineTx, useTrustlineTx } from "@/lib/ui/trustline";
 import { ActionError, useActions } from "@/lib/ui/use-actions";
+import { useSession } from "@/lib/wallet/session";
 
 export default function Home() {
-  const { ready, authenticated, user, login, logout } = usePrivy();
-  const { createWallet } = useCreateWallet();
-  const { signRawHash } = useSignRawHash();
+  // The one place the page learns whose wallet it is working with. Which of
+  // the two implementations is behind this is settled at build time, and
+  // nothing below asks.
+  const session = useSession();
+  const { ready, connected, address, signer } = session;
 
   // Balances carry the address they belong to, which is what lets the shimmer
   // be derived rather than toggled: anything not yet read for the current
@@ -77,9 +74,6 @@ export default function Home() {
   // Survives a reload, like the contributions below.
   const log = useActivityLog();
 
-  const wallet = findStellarWallet(user);
-  const address = wallet?.address ?? null;
-
   // Survive a reload, unlike everything else on this page.
   const contributions = useContributions(address);
   const trustlineTx = useTrustlineTx(address);
@@ -93,9 +87,9 @@ export default function Home() {
   // Left behind, the next person to sign in on this browser would open it to
   // someone else's wallet address and balances.
   const onLogout = useCallback(async () => {
-    await logout();
+    await session.disconnect();
     clearActivity();
-  }, [logout]);
+  }, [session]);
 
   const actions = useActions(note);
 
@@ -152,10 +146,19 @@ export default function Home() {
     };
   }, [address]);
 
+  // The signed-out card. Privy opens its email modal and returns immediately;
+  // the Kit resolves once a wallet is connected, or throws if the picker was
+  // closed or the wallet is on the wrong network. Only the failure has
+  // anything to say, so only the failure is rendered.
+  const onConnect = () => actions.run("connect", () => session.connect());
+
   const onCreateWallet = () =>
     actions.run("wallet", async () => {
-      const { wallet: created } = await createWallet({ chainType: "stellar" });
-      return { message: `Your Stellar wallet is ready: ${created.address}` };
+      if (!session.createWallet) {
+        throw new ActionError("This wallet mode has no wallet to create.");
+      }
+      await session.createWallet();
+      return { message: "Your Stellar wallet is ready." };
     });
 
   const onFund = () =>
@@ -182,7 +185,9 @@ export default function Home() {
 
   const onSendPayment = () =>
     actions.run("sign", async () => {
-      if (!address) throw new Error("You do not have a wallet address yet.");
+      if (!address || !signer) {
+        throw new Error("You do not have a wallet address yet.");
+      }
       const account = await horizon.loadAccount(address);
       const tx = new TransactionBuilder(account, {
         fee: BASE_FEE,
@@ -198,8 +203,10 @@ export default function Home() {
         .setTimeout(180)
         .build();
 
-      await signWithPrivy(tx, address, signRawHash);
-      const result = await horizon.submitTransaction(tx);
+      // The signed transaction, which the Kit builds anew rather than handing
+      // back the one it was given.
+      const signed = await signer.signTransaction(tx);
+      const result = await horizon.submitTransaction(signed);
       setSignedFor(address);
       await refresh(address);
       return {
@@ -210,8 +217,10 @@ export default function Home() {
 
   const onAddTrustline = () =>
     actions.run("trustline", async () => {
-      if (!address) throw new Error("You do not have a wallet address yet.");
-      const hash = await addTrustline(address, signRawHash);
+      if (!address || !signer) {
+        throw new Error("You do not have a wallet address yet.");
+      }
+      const hash = await addTrustline(signer);
       recordTrustlineTx(address, hash);
       await refresh(address);
       // The message still reaches the activity log. What it does not do is
@@ -292,9 +301,11 @@ export default function Home() {
     ) =>
     () =>
       actions.run(id, async () => {
-        if (!address) throw new Error("You do not have a wallet address yet.");
+        if (!address || !signer) {
+          throw new Error("You do not have a wallet address yet.");
+        }
         const value = options?.amountOverride ?? amount;
-        const hash = await contribute(address, value, signRawHash, options);
+        const hash = await contribute(signer, value, options);
         recordContribution(address, { hash, amount: value, at: Date.now() });
         await refresh(address);
         return { message: `Sent ${value} ${USDC_CODE} to the pool.`, tx: hash };
@@ -322,8 +333,11 @@ export default function Home() {
   const signed = signedFor !== null && signedFor === address;
   const hasTrustline = usdc !== null;
   const hasUsdc = usdc !== null && Number(usdc) > 0;
-  const email = user?.email?.address ?? user?.id ?? "Signed in";
   const busy = actions.busy;
+
+  // The two modes are the same app from step 2 onwards. They differ in how you
+  // arrive: Privy makes you a wallet, and a browser extension brings its own.
+  const kit = session.mode === "wallets-kit";
 
   // The balance-derived locks below are read off something that is not in hand
   // on the first render. Stating a reason from what has not been read yet would
@@ -337,7 +351,9 @@ export default function Home() {
   // to a step that is itself locked.
   const needsWallet =
     address === null
-      ? "Create your wallet in step 1 first. Every step below acts on it."
+      ? kit
+        ? "Connect a wallet in step 1 first. Every step below acts on it."
+        : "Create your wallet in step 1 first. Every step below acts on it."
       : undefined;
 
   // Nothing can touch a wallet the network has never heard of: signing needs a
@@ -358,7 +374,7 @@ export default function Home() {
       ? `Switch ${USDC_CODE} on in step 4 first. Until you do, your wallet cannot receive or send it.`
       : undefined);
 
-  if (!authenticated) {
+  if (!connected) {
     return (
       <>
         <div className="shell">
@@ -368,11 +384,15 @@ export default function Home() {
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             className="hero"
           >
-            <h1>A Stellar wallet, with nothing to write down</h1>
+            <h1>
+              {kit
+                ? "A funded testnet wallet, from the one you already have"
+                : "A Stellar wallet, with nothing to write down"}
+            </h1>
             <p>
-              Sign in with your email and you get a wallet you can actually use:
-              funded, able to hold USDC, and ready to send its first payment. No
-              seed phrase, no browser extension.
+              {kit
+                ? "Connect Freighter or xBull and you get an account you can actually use here: funded, able to hold USDC, and ready to send its first payment. Your key stays in the extension."
+                : "Sign in with your email and you get a wallet you can actually use: funded, able to hold USDC, and ready to send its first payment. No seed phrase, no browser extension."}
             </p>
             <div className="badge-row">
               <span className="badge badge-accent">Testnet only</span>
@@ -382,20 +402,34 @@ export default function Home() {
           </motion.header>
 
           <Card
-            title="Sign in"
-            note="Privy emails you a code, then creates and keeps the wallet safe for you."
+            title={kit ? "Connect your wallet" : "Sign in"}
+            note={
+              kit
+                ? "Every transaction below is built here and approved by you in the extension. This page never sees your key."
+                : "Privy emails you a code, then creates and keeps the wallet safe for you."
+            }
           >
             <div className="row">
               <ActionButton
-                status="idle"
-                onClick={() => login()}
+                status={actions.get("connect").status}
+                onClick={onConnect}
                 variant="primary"
                 size="lg"
-                icon={<MailIcon />}
+                pending={kit ? "Waiting for your wallet" : undefined}
+                icon={kit ? <WalletIcon /> : <MailIcon />}
               >
-                Continue with email
+                {kit ? "Connect a wallet" : "Continue with email"}
               </ActionButton>
             </div>
+            {/* A picker that was closed, or a wallet on the wrong network.
+                Success needs no sentence: the page becomes the walkthrough. */}
+            <ResultPanel
+              result={
+                actions.get("connect").result?.ok
+                  ? undefined
+                  : actions.get("connect").result
+              }
+            />
           </Card>
         </div>
         <Footer />
@@ -407,7 +441,7 @@ export default function Home() {
     <>
       <div className="shell">
         <AccountBar
-          email={email}
+          label={session.label}
           address={address}
           explorerUrl={address ? explorerAccountUrl(address) : null}
           xlm={xlm}
@@ -429,20 +463,34 @@ export default function Home() {
 
         <Card
           step={1}
-          title="Create your Stellar wallet"
-          note="This makes a wallet tied to your account. Privy holds the key, so there is nothing for you to back up."
+          title={kit ? "Your connected wallet" : "Create your Stellar wallet"}
+          note={
+            kit
+              ? `Connected with ${session.label}. The account below is the one it is currently exposing, and every step after this one acts on it.`
+              : "This makes a wallet tied to your account. Privy holds the key, so there is nothing for you to back up."
+          }
           done={address !== null}
         >
           <div className="row">
+            {/* Nothing to create in Kit mode: the wallet arrived with an
+                account already. The step stays in the list rather than
+                renumbering the other six, and states what it has instead of
+                offering a button that would have nothing to do. */}
             <ActionButton
               status={actions.get("wallet").status}
               onClick={onCreateWallet}
-              disabled={busy || address !== null}
+              disabled={
+                busy || address !== null || session.createWallet === null
+              }
               variant={address === null ? "primary" : "done"}
               pending="Creating"
               icon={address === null ? <SparkIcon /> : <CheckIcon size={13} />}
             >
-              {address === null ? "Create wallet" : "Your wallet is ready"}
+              {address === null
+                ? "Create wallet"
+                : kit
+                  ? `Connected with ${session.label}`
+                  : "Your wallet is ready"}
             </ActionButton>
           </div>
           {/* Success is the button's to state, and the address it used to

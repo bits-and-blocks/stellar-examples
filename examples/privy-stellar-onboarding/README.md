@@ -4,6 +4,10 @@ Email login to funded testnet contribution in one flow: Privy embedded wallet,
 then test USDC into a pool via the Stellar Asset Contract with transfer results
 checked. The commit history is the integration timer.
 
+The same flow also runs on a wallet the user already has — Freighter or xBull
+through Stellar Wallets Kit — selected by one environment variable. See
+[Two ways to sign](#two-ways-to-sign).
+
 **Status: working.** Email login to a USDC contribution through the Stellar
 Asset Contract, with no seed phrase at any point. The Privy integration measured
 **15 minutes 8 seconds** — see [Integration timer](#integration-timer). The
@@ -81,8 +85,97 @@ tx.signatures.push(
 
 That is the whole Privy-specific surface area. Everything else in this example
 is ordinary `@stellar/stellar-sdk` usage that would look the same behind any
-signer, which is also what makes the Phase 1 decision gate cheap: swapping to
-Stellar Wallets Kit would replace these lines and nothing else.
+signer, which is also what made the Phase 1 decision gate cheap: swapping to
+Stellar Wallets Kit replaces these lines and nothing else. That swap has since
+been done and both signers ship — see [Two ways to sign](#two-ways-to-sign).
+
+## Two ways to sign
+
+One environment variable, `NEXT_PUBLIC_WALLET_MODE`, chooses who holds the key:
+`privy` (the default) or `wallets-kit`. The same seven steps run either way and
+land the same contribution on testnet.
+
+The interesting part is not the toggle. It is that **the two sides sit at
+different levels**, and the interface has to be drawn where both can reach:
+
+| | Privy | Stellar Wallets Kit |
+| --- | --- | --- |
+| What it holds | An ed25519 key, custodied | Nothing — the key stays in the extension |
+| What it accepts | 32 bytes | A transaction, as XDR |
+| What it returns | 64 raw bytes | Signed XDR |
+| What it knows about Stellar | Nothing | Everything it needs to |
+| Who approves | Nobody — it signs on request | The user, in Freighter or xBull |
+
+So [`Signer`](lib/signing/signer.ts) is drawn at the higher of the two:
+
+```ts
+type Signer = {
+  readonly address: string;
+  signTransaction(tx: Transaction): Promise<Transaction>;
+};
+```
+
+Drawn any lower — `signHash`, say — the Kit could not implement it at all, and a
+mode toggle between two copy-pasted flows is not an abstraction. Drawn here,
+[`privySigner`](lib/signing/privy.ts) absorbs the whole hash-sign-attach dance
+described above, and [`kitSigner`](lib/signing/wallets-kit.ts) delegates.
+
+**The one thing that bites when you do this**: Privy signs a hash and the
+signature is attached to the transaction you passed in, so the argument and the
+result are the same object. A wallet extension returns *different* XDR. Code
+that submits the argument instead of the return value works perfectly in Privy
+mode and silently submits an unsigned transaction in Kit mode. Every call site
+had to change, and the interface says so where someone will read it.
+
+### What the Kit implementation checks
+
+Delegating is not the same as trusting. A wallet is free to hand back whatever
+it likes, and some of the ways that can go wrong are invisible until Horizon
+rejects the result:
+
+- **A different transaction.** The returned envelope's hash must equal the one
+  that was sent. A fee-bump wrapper is refused for the same reason.
+- **A different account.** Freighter signs with whichever account is *active*,
+  and someone can switch that between connecting and approving. The signature is
+  verified against the address the app is using before anything is submitted.
+- **A different network.** Checked once at connect time, because every hash here
+  is built against the testnet passphrase.
+
+Each one gets its own sentence in the UI, in the same style as the contribution
+failures below.
+
+### Where the modes genuinely differ, and where they do not
+
+Only step 1. Privy creates an embedded wallet on request; a browser extension
+arrives with an account already, and this page could not create one if it wanted
+to. Rather than fake a step, `Session.createWallet` is `null` in Kit mode and
+the step renders as done, naming the wallet it connected with.
+
+Everything after that — Friendbot, the signing check, the trustline, the faucet,
+the contribution, the failure demos — is one code path with no branch on mode in
+it. The page reads [`useSession()`](lib/wallet/session.ts) and never asks which
+implementation is behind it.
+
+Selection happens at build time, not runtime: `NEXT_PUBLIC_` values are inlined,
+so exactly one session provider is ever mounted and a Kit build needs no Privy
+app ID. That is also what lets the two sessions be separate components with
+their own hooks ([`privy-session.tsx`](lib/wallet/privy-session.tsx),
+[`kit-session.tsx`](lib/wallet/kit-session.tsx)) instead of one component
+branching on a value React would not let it branch on.
+
+**What that does not do is split the bundle.** Both providers are statically
+imported by [`app/providers.tsx`](app/providers.tsx), and the mode is computed
+rather than written as a foldable literal, so both SDKs are emitted in either
+build. The Kit is at least behind a dynamic `import()` — about 180 KB across
+four chunks that a Privy build serves but never fetches, since nothing in that
+mode calls into it. Privy's SDK has no such shield and loads in both. Splitting
+it properly means lazy-loading each provider behind Suspense, which is a real
+improvement and not one this example needs to make its point.
+
+Only the Freighter and xBull modules are registered. The Kit ships many more and
+`defaultModules()` would enable them all, but WalletConnect configuration is out
+of scope here and every unused module is bundle weight for a wallet nobody is
+being asked to install.
 
 ## Testnet only
 
@@ -104,10 +197,22 @@ cp .env.example .env.local   # fill in NEXT_PUBLIC_PRIVY_APP_ID
 npm run dev
 ```
 
+To run it against a browser wallet instead, set one variable — no Privy app ID
+is needed, and none is used:
+
+```bash
+NEXT_PUBLIC_WALLET_MODE=wallets-kit npm run dev
+```
+
+That mode needs Freighter or xBull installed, **switched to Test Net**, with an
+account it can fund. The app checks the wallet's network when you connect and
+refuses to go further if it is on Public, rather than asking you to approve a
+transaction your wallet cannot make sense of.
+
 The repository's shared CI installs and builds every example under `examples/`
 on each push and pull request, so this directory is covered by `npm install` and
 `npm run build`. `npm run lint` and `npm run typecheck` are available locally.
-The build takes no secrets.
+The build takes no secrets, and builds in either mode.
 
 ## Integration timer
 
@@ -243,8 +348,10 @@ npm run verify:contribution
 ```
 
 [`scripts/verify-contribution.mts`](scripts/verify-contribution.mts) runs the
-real `contribute`, `addTrustline` and `preflight` against live testnet, with a
-local `Keypair` substituted for Privy through the identical interface. It
+real `contribute`, `addTrustline` and `preflight` against live testnet. It builds
+its `Signer` from the shipped `privySigner`, handed a local `Keypair` in place of
+Privy's service, so the hash extraction, the hint and the `DecoratedSignature`
+attachment are all the real code and only the custodian is substituted. It
 asserts every failure mode, then performs a real SAC transfer and checks both
 balances moved:
 
@@ -270,7 +377,7 @@ Friendbot being up, so a network hiccup would show as a broken build.
 
 ## Verifying the signature glue without Privy
 
-[`lib/stellar/sign.ts`](lib/stellar/sign.ts) is the only component that can
+[`lib/signing/privy.ts`](lib/signing/privy.ts) is the only component that can
 silently produce an invalid transaction, so it was tested against real testnet
 with a local `Keypair` substituted for Privy — same interface, 32-byte hash in
 and 64-byte signature out. Horizon accepted the result
@@ -328,6 +435,12 @@ trustline and enough USDC, so there was nothing for preflight to catch.
 - **Production auth concerns.** No session hardening, rate limiting, MFA policy,
   or account recovery flows beyond what Privy provides by default.
 - **Multi-asset support.** One asset, one pool, one path through the app.
+- **A wallet picker of our own.** Kit mode opens the Kit's modal and takes what
+  it returns. Two modules are registered, Freighter and xBull, and WalletConnect
+  is not configured.
+- **Running both signers at once.** The mode is a build-time choice, so a single
+  deployment offers one of them. Letting a user pick would mean loading both
+  libraries and holding two sessions, which buys nothing this example is about.
 - **Retry and resubmission logic** beyond surfacing the error. A real donor flow
   would handle `tx_bad_seq` and `TRY_AGAIN_LATER` with backoff; this one reports
   them.
@@ -348,8 +461,14 @@ trustline and enough USDC, so there was nothing for preflight to catch.
 - Stellar — [Stellar Asset Contract](https://developers.stellar.org/docs/tokens/stellar-asset-contract),
   [JS SDK](https://stellar.github.io/js-stellar-sdk/),
   [Soroban RPC](https://developers.stellar.org/docs/data/apis/rpc)
-- [Stellar Wallets Kit](https://stellarwalletskit.dev) — the fallback signer if
-  the Phase 1 decision gate fails
+- Stellar Wallets Kit — [docs](https://stellarwalletskit.dev),
+  [GitHub](https://github.com/Creit-Tech/Stellar-Wallets-Kit),
+  [npm](https://www.npmjs.com/package/@creit.tech/stellar-wallets-kit). Started
+  as the fallback signer if the Phase 1 decision gate failed; now the second
+  mode, alongside Privy rather than instead of it.
+- [SEP-43](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0043.md)
+  — the wallet interface the Kit's modules implement, and the reason
+  `signTransaction` takes the shape it does
 - [Original brief](docs/brief.md)
 
 ## License

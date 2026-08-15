@@ -18,10 +18,10 @@ import {
   isContractAddress,
   toStroops,
 } from "./assets";
+import type { Signer } from "@/lib/signing/signer";
 import { ContributionError } from "./errors";
 import { horizon } from "./horizon";
 import { NETWORK_PASSPHRASE, SOROBAN_RPC_URL } from "./network";
-import { type RawHashSigner, signWithPrivy } from "./sign";
 
 export const soroban = new rpc.Server(SOROBAN_RPC_URL);
 
@@ -52,11 +52,8 @@ export async function getUsdcBalance(address: string): Promise<string | null> {
  * Costs 0.5 XLM, held in reserve rather than spent, and released if the
  * trustline is ever removed.
  */
-export async function addTrustline(
-  donor: string,
-  signRawHash: RawHashSigner,
-): Promise<string> {
-  const account = await horizon.loadAccount(donor);
+export async function addTrustline(signer: Signer): Promise<string> {
+  const account = await horizon.loadAccount(signer.address);
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
     networkPassphrase: NETWORK_PASSPHRASE,
@@ -65,10 +62,12 @@ export async function addTrustline(
     .setTimeout(180)
     .build();
 
-  await signWithPrivy(tx, donor, signRawHash);
+  // The signed transaction, which is not always the one passed in — see the
+  // note on Signer.signTransaction.
+  const signed = await signer.signTransaction(tx);
 
   try {
-    const result = await horizon.submitTransaction(tx);
+    const result = await horizon.submitTransaction(signed);
     return result.hash;
   } catch (caught) {
     throw new ContributionError({
@@ -140,11 +139,11 @@ export async function preflight(
  * problem, and it holds only while these two addresses are the same.
  */
 export async function contribute(
-  donor: string,
+  signer: Signer,
   amount: string,
-  signRawHash: RawHashSigner,
   options: { recipient?: string; skipPreflight?: boolean } = {},
 ): Promise<string> {
+  const donor = signer.address;
   const recipient = options.recipient ?? POOL_ADDRESS;
 
   if (!options.skipPreflight) {
@@ -182,9 +181,9 @@ export async function contribute(
   // hash that no longer matches what gets submitted.
   const prepared = rpc.assembleTransaction(built, simulation).build();
 
-  await signWithPrivy(prepared, donor, signRawHash);
+  const signed = await signer.signTransaction(prepared);
 
-  const sent = await soroban.sendTransaction(prepared);
+  const sent = await soroban.sendTransaction(signed);
   if (sent.status === "ERROR") {
     throw new ContributionError({
       kind: "submission-failed",
