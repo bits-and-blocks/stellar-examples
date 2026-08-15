@@ -1,25 +1,72 @@
-/* Deliberately minimal. This repo proves an integration, not frontend taste. */
+/* Design tokens and the small set of primitives the app composes from.
+   Values come from the Wallet Setup handoff, which specifies a single dark
+   theme rather than a light/dark pair. */
 
 :root {
-  --bg: #ffffff;
-  --fg: #16161a;
-  --muted: #6b6b76;
-  --line: #e3e3e8;
-  --accent: #2f5bd8;
-  --ok: #1a7f4b;
-  --err: #b4232c;
-}
+  --bg: #0a0a0d;
+  /* The page background at zero alpha. Stated rather than using `transparent`
+     so the fade below the bar cannot pick up a grey cast on the way out. */
+  --bg-0: rgba(10, 10, 13, 0);
+  --surface: #131318;
+  /* Inset pills, inputs, and the header's balance chips. */
+  --surface-2: #1a1a20;
+  --surface-2-hover: #232329;
+  /* The lighter wash used by info panels and list rows sitting on a card. */
+  --inset: rgba(255, 255, 255, 0.03);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #101014;
-    --fg: #ececf1;
-    --muted: #9a9aa6;
-    --line: #2a2a33;
-    --accent: #7fa0f5;
-    --ok: #4ec98a;
-    --err: #f2707a;
-  }
+  --heading: #fbfbfc;
+  --fg: #f2f2f5;
+  --fg-2: #e4e4e8;
+  --secondary: #c8c8ce;
+  --secondary-2: #b4b4bc;
+  --muted: #9a9aa5;
+  --dim: #78787f;
+  --dimmer: #6b6b73;
+  --faint: #5c5c63;
+
+  --line: rgba(255, 255, 255, 0.08);
+  --line-soft: rgba(255, 255, 255, 0.06);
+  --line-inset: rgba(255, 255, 255, 0.07);
+  --line-pill: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --line-hover: rgba(255, 255, 255, 0.28);
+  --wash-hover: rgba(255, 255, 255, 0.06);
+
+  --accent: #7c6cf6;
+  --accent-hover: #6a58f2;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(124, 108, 246, 0.14);
+  --link: #a99bff;
+  --link-hover: #c3b8ff;
+
+  --ok: #4ade80;
+  --ok-soft: rgba(52, 211, 153, 0.08);
+  --ok-fill: rgba(52, 211, 153, 0.15);
+  --ok-line: rgba(52, 211, 153, 0.28);
+  --ok-line-soft: rgba(52, 211, 153, 0.25);
+  --ok-line-strong: rgba(52, 211, 153, 0.4);
+  --ok-text: #d5f5e6;
+  --ok-text-2: #8fe3bb;
+  --ok-fill-hover: rgba(52, 211, 153, 0.12);
+
+  --err: #f87171;
+  --err-soft: rgba(248, 113, 113, 0.08);
+  --err-line: rgba(248, 113, 113, 0.28);
+  --err-text: #fecaca;
+
+  /* Cards / pills and inputs / result boxes / small buttons. */
+  --radius: 16px;
+  --radius-md: 11px;
+  --radius-sm: 10px;
+  --radius-xs: 8px;
+
+  /* Every control on the page shares one height so a button and an input on
+     the same row line up without either being nudged. */
+  --control: 40px;
+
+  --shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 34px -16px rgba(0, 0, 0, 0.8);
+
+  color-scheme: dark;
 }
 
 * {
@@ -28,75 +75,859 @@
 
 body {
   margin: 0;
-  padding: 2rem 1.25rem 4rem;
+  padding: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.55;
+  font-family: var(--font-sans), "IBM Plex Sans", ui-sans-serif, system-ui,
+    sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
-main {
-  max-width: 46rem;
-  margin: 0 auto;
-}
-
-h1 {
-  font-size: 1.5rem;
-  margin: 0 0 0.25rem;
-}
-
-h2 {
-  font-size: 1rem;
-  margin: 2rem 0 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+::selection {
+  background: rgba(124, 108, 246, 0.35);
 }
 
 a {
-  color: var(--accent);
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 code,
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.85em;
+  font-family: var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular,
+    Menlo, Consolas, monospace;
   overflow-wrap: anywhere;
 }
 
-dl {
-  display: grid;
-  grid-template-columns: minmax(8rem, auto) 1fr;
-  gap: 0.4rem 1rem;
-  margin: 0;
-  padding: 0.9rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+/* ---------- layout ---------- */
+
+.shell {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 48px 20px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
 }
 
-dt {
+.hero {
+  padding: 10px 0 0;
+}
+
+.hero h1 {
+  font-size: clamp(26px, 6vw, 32px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--heading);
+  margin: 0 0 8px;
+}
+
+.hero p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 34rem;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
   color: var(--muted);
 }
 
-dd {
-  margin: 0;
+.badge-accent {
+  border-color: rgba(124, 108, 246, 0.35);
+  background: var(--accent-soft);
+  color: var(--link);
 }
 
-button {
-  font: inherit;
-  padding: 0.5rem 0.9rem;
+/* ---------- account bar ---------- */
+
+.bar {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px 10px;
+  flex-wrap: wrap;
+  padding: 16px 22px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius);
+  /* Opaque on purpose. A frosted bar let the text underneath read through it,
+     which made the whole page look like a double exposure. */
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+/* A clean sheet of page background behind the whole bar, covering both places
+   scrolling content used to show through: the sliver between the top of the
+   viewport and the bar, and the four notches the rounded corners leave open
+   inside the bar's own box, which nothing above or below the bar can reach.
+
+   Negative z-index puts it behind the bar's background and border rather than
+   over them, so the corners keep their radius and the top border stays
+   visible. It stays inside the bar's own stacking context, which the sticky
+   z-index above establishes, so it cannot fall behind the page itself. */
+.bar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  /* Absolute positioning measures from the padding box, so the bottom edge is
+     pushed out by the 1px border to reach the corners at the very bottom. */
+  inset: -14px -20px -1px;
+  background: var(--bg);
+}
+
+/* Content dissolves into the page as it reaches the bar rather than being
+   sliced off at its edge. Offset by the same 1px as the mask above, and never
+   takes a click, since it sits over live content.
+
+   The first stop holds at full opacity before the fade starts. A gradient that
+   begins fading at the bar's edge leaves a line of text sitting there only
+   half covered, which reads as a ghost rather than as hidden. The total height
+   stays within the 32px of clear space above the title so nothing is veiled
+   when the page is at rest. */
+.bar::after {
+  content: "";
+  position: absolute;
+  left: -20px;
+  right: -20px;
+  top: calc(100% + 1px);
+  height: 32px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, var(--bg) 0 24px, var(--bg-0) 100%);
+}
+
+.bar-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.avatar {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #7c6cf6, #5a4fd6);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.bar-email {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-address {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+/* The copy and explorer affordances beside the address. Quiet until pointed
+   at, so the address itself stays the thing you read. */
+.link-icon {
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+  transition: color 0.18s;
+}
+
+.link-icon:hover {
+  color: var(--link);
+}
+
+.link-icon.copied {
+  color: var(--ok);
+}
+
+.bar-balances {
+  display: flex;
+  gap: 10px;
+  flex: none;
+  margin-left: auto;
+}
+
+.balance {
+  height: var(--control);
+  min-width: 5.4rem;
+  padding: 5px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line-inset);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.balance-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+  line-height: 1.4;
+}
+
+.balance-value {
+  display: block;
+  max-width: 100%;
+  font-family: var(--font-mono), "IBM Plex Mono", monospace;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.balance-value.empty {
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--dim);
+}
+
+.bar-actions {
+  display: flex;
+  gap: 10px;
+  flex: none;
+}
+
+/* ---------- cards ---------- */
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.step-num {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: var(--wash-hover);
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  transition: background 0.25s, color 0.25s, border-color 0.25s;
+}
+
+.step-num.done {
+  background: var(--ok-fill);
+  color: var(--ok);
+  border-color: var(--ok-line-strong);
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--fg);
+  margin: 0 0 6px;
+}
+
+.card-note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* A header that is one line with a control on the right, rather than a title
+   stacked over a description. */
+.card-head-flat .card-title {
+  margin-bottom: 0;
+}
+
+/* Lines the body up under the title rather than the step marker. */
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-left: 36px;
+}
+
+@media (max-width: 30rem) {
+  .card-body {
+    padding-left: 0;
+  }
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: var(--control);
+  padding: 0 18px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, opacity 0.18s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--wash-hover);
+  border-color: var(--line-hover);
+  color: var(--fg-2);
+  text-decoration: none;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-size: 14px;
+  padding: 0 26px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-fg);
+}
+
+.btn-lg {
+  font-size: 14px;
+  padding: 0 26px;
+}
+
+/* Small pills that live inside a result box or a list row. */
+.btn-sm {
+  height: auto;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: var(--radius-xs);
+  border-color: var(--line-pill);
+  background: var(--surface-2);
+  color: var(--secondary);
+}
+
+.btn-sm:hover:not(:disabled) {
+  background: var(--surface-2-hover);
+  border-color: var(--line-pill);
+  color: var(--secondary);
+}
+
+/* Filled rather than outlined: the header sits on the same surface as a card,
+   so a transparent control would read as part of the card. */
+.btn-quiet {
+  background: var(--surface-2);
+  border-color: var(--line-pill);
+  font-size: 13px;
+  padding: 0 16px;
+}
+
+.btn-quiet:hover:not(:disabled) {
+  background: var(--surface-2-hover);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.btn-icon {
+  width: var(--control);
+  padding: 0;
+  background: var(--surface-2);
+  border-color: var(--line-pill);
+  color: var(--muted);
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: var(--surface-2-hover);
+  border-color: var(--line-pill);
+  color: var(--fg);
+}
+
+/* Busy is not unavailable. Fading a working button out would dim the one thing
+   on the bar that is moving, which is the thing worth seeing. */
+.btn-icon[aria-busy="true"]:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+
+/* A step that is already done. Not dimmed like a plain disabled button: the
+   state is an answer ("this is switched on"), not an unavailable control. */
+.btn-done,
+.btn.is-success:not(:disabled) {
+  background: var(--ok-soft);
+  border-color: var(--ok-line-soft);
+  color: var(--ok-text-2);
+}
+
+.btn-done:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.btn-done:hover:not(:disabled) {
+  background: var(--ok-fill-hover);
+  border-color: var(--ok-line);
+  color: var(--ok-text-2);
+}
+
+.btn.is-info:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--line-pill);
+  color: var(--muted);
+}
+
+.btn.is-error:not(:disabled) {
+  background: var(--err-soft);
+  border-color: var(--err-line);
+  color: var(--err);
+}
+
+/* ---------- input ---------- */
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--control);
+  padding: 0 14px;
+  flex: 1;
+  max-width: 220px;
+  border: 1px solid var(--line-pill);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field input {
+  font-family: var(--font-mono), "IBM Plex Mono", monospace;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  width: 60px;
+  padding: 0;
+  border: 0;
   background: transparent;
   color: var(--fg);
-  cursor: pointer;
+  outline: none;
 }
 
-button:hover:not(:disabled) {
-  border-color: var(--accent);
+.field-suffix {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dim);
 }
 
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+/* ---------- result panels ---------- */
+
+.result {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  font-size: 13.5px;
+  line-height: 1.55;
+  overflow: hidden;
+}
+
+.result-success {
+  border-color: var(--ok-line);
+  background: var(--ok-soft);
+  color: var(--ok-text);
+}
+
+/* Ran, changed nothing. Deliberately colourless: a green panel here would
+   claim credit for work that did not happen. */
+.result-info {
+  border-color: var(--line-inset);
+  background: var(--inset);
+  color: var(--secondary-2);
+}
+
+.result-error {
+  border-color: var(--err-line);
+  background: var(--err-soft);
+  color: var(--err-text);
+}
+
+.result-icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.result-success .result-icon {
+  color: var(--ok);
+}
+
+.result-info .result-icon {
+  color: var(--dimmer);
+}
+
+.result-error .result-icon {
+  color: var(--err);
+}
+
+.result-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.result-title {
+  font-weight: 600;
+}
+
+.result-info .result-title {
+  font-weight: 400;
+}
+
+.result-detail {
+  font-size: 13px;
+}
+
+/* The network's own words, kept verbatim and set in mono so it is obvious
+   they are not ours. */
+.result-raw {
+  font-family: var(--font-mono), "IBM Plex Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* The message and its explorer links share one line, links to the right. They
+   wrap onto their own line only when the sentence leaves no room. */
+.result-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.result-links {
+  flex: none;
+  margin-left: auto;
+}
+
+/* Neutral rather than tinted with the panel: the panel's own colour already
+   says how it went, and a green pill made the links compete with the sentence
+   they belong to. Trimmed to the height of that line of text so the two sit
+   level. */
+.result .btn-sm {
+  padding: 3px 10px;
+  background: var(--surface-2);
+  border-color: var(--line-pill);
+  color: var(--secondary);
+}
+
+.result .btn-sm:hover {
+  background: var(--surface-2-hover);
+  border-color: var(--line-pill);
+  color: var(--fg-2);
+}
+
+/* ---------- misc ---------- */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.list li {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-inset);
+  background: var(--inset);
+  font-size: 13.5px;
+}
+
+.list-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.list-amount {
+  flex: none;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.list-hash {
+  font-size: 12px;
+  color: #8a8a92;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 0 14px;
+  margin: 0;
+  padding: 4px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-inset);
+  background: var(--inset);
+}
+
+.kv dt {
+  padding: 12px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--dim);
+}
+
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  padding: 12px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--secondary);
+  word-break: break-all;
+}
+
+/* Divides the rows without a separator element per row. */
+.kv dt:not(:last-of-type),
+.kv dd:not(:last-of-type) {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* Prose, not an address, so it wraps on spaces rather than inheriting the
+   break-all the address beside it needs. */
+.kv .aside {
+  font-family: var(--font-sans), "IBM Plex Sans", sans-serif;
+  color: var(--dimmer);
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.log {
+  margin: 0;
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-inset);
+  background: var(--inset);
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--secondary-2);
+  max-height: 15rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.log-line {
+  display: flex;
+  gap: 10px;
+}
+
+.log-time {
+  flex: none;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.section-label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.footer {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 22px 20px 40px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--dimmer);
+}
+
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+/* ---------- motion primitives ---------- */
+
+.spinner {
+  /* Matches the SVG default, stated so the rotation cannot drift off centre if
+     transform-box ever changes underneath it. */
+  transform-origin: 50% 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.shimmer {
+  display: block;
+  width: 100%;
+  height: 12px;
+  margin-top: 2px;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--line) 25%,
+    var(--line-strong) 37%,
+    var(--line) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* A busy indicator is feedback, not decoration. Freezing it makes a button
+     that is working look like a button that is stuck, so it keeps turning and
+     only slows down. */
+  .spinner {
+    animation: spin 1.4s linear infinite !important;
+  }
+
+  /* The sweep is decoration and can go, but a gradient stopped mid-sweep looks
+     like a rendering fault. A flat bar still reads as a placeholder. */
+  .shimmer {
+    background: var(--line);
+  }
 }

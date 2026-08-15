@@ -27,45 +27,50 @@ export class ContributionError extends Error {
   }
 }
 
-/** Plain-language explanation and the action that resolves it. */
+/**
+ * Plain-language explanation and the action that resolves it. `detail` is the
+ * network's own words, kept apart from ours so the UI can set it verbatim in
+ * monospace rather than passing it off as a sentence we wrote.
+ */
 export function describeFailure(failure: ContributionFailure): {
   summary: string;
   remedy: string;
+  detail?: string;
 } {
   switch (failure.kind) {
     case "missing-trustline":
       return failure.who === "donor"
         ? {
-            summary: "Your wallet has no USDC trustline.",
+            summary: "Your wallet cannot hold USDC yet.",
             remedy:
-              "A Stellar account cannot hold an asset until it explicitly opts in. Run step 5 to add the trustline, which costs 0.5 XLM in reserve.",
+              "Stellar makes you switch a token on before your wallet can hold it. Go back to step 3 and switch on USDC. It sets aside 0.5 XLM, which you get back if you ever switch it off.",
           }
         : {
-            summary: "The recipient has no USDC trustline.",
-            remedy: `${failure.address} cannot receive USDC. A G-address must opt in before it can be paid; a pool contract (C-address) would not need to.`,
+            summary: "The pool cannot receive USDC.",
+            remedy: `${failure.address} has not switched USDC on, so nobody can pay it. A regular Stellar address has to opt in first. A pool contract would not.`,
           };
 
     case "insufficient-balance":
       return {
-        summary: `Not enough USDC: you have ${failure.have}, this would send ${failure.want}.`,
+        summary: `Not enough USDC. You have ${failure.have} and this would send ${failure.want}.`,
         remedy:
-          "Claim test USDC from the Circle faucet in step 6, then refresh the balance.",
+          "Claim free test USDC from the Circle faucet in step 4, then check your balance again.",
       };
 
     case "simulation-failed":
       return {
-        summary: "Soroban rejected the call during simulation.",
+        summary: "Stellar checked this transaction and turned it down.",
         remedy:
-          "Simulation runs before submission, so this cost no fee. Detail: " +
-          failure.detail,
+          "The check runs before anything is sent, so it cost you nothing. Here is what came back:",
+        detail: failure.detail,
       };
 
     case "submission-failed":
       return {
-        summary: "The transaction was signed but the network did not accept it.",
+        summary: "Your transaction was signed but the network did not take it.",
         remedy:
-          "This is a network-level failure rather than a problem with the contribution itself; retrying with a fresh sequence number usually resolves it. Detail: " +
-          failure.detail,
+          "This is a network problem rather than something wrong with your contribution. Trying again usually works. Here is what came back:",
+        detail: failure.detail,
       };
   }
 }

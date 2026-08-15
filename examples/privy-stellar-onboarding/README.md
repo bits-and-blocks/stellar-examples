@@ -225,9 +225,9 @@ much. [`lib/stellar/errors.ts`](lib/stellar/errors.ts) models four outcomes:
 
 The app has two buttons that deliberately fail. Both send the same impossible
 contribution — 999999 USDC — and differ only in whether preflight runs.
-**Over-balance, checked** produces `insufficient-balance` with the held and
-requested amounts. **Over-balance, unchecked** skips preflight, so the same
-mistake arrives from Soroban as a host error instead.
+**Too much, with the check** produces `insufficient-balance` with the held and
+requested amounts. **Too much, no check** skips preflight, so the same mistake
+arrives from Soroban as a host error instead.
 
 Worth being precise about what `skipPreflight` does, because the first version
 of this demo got it wrong: it does not induce a failure. It removes an early

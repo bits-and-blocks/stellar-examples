@@ -18,15 +18,47 @@ export async function fundWithFriendbot(
   );
 
   if (response.ok) {
-    return { funded: true, note: "Friendbot created and funded the account." };
+    return { funded: true, note: "Friendbot funded your wallet." };
   }
 
   const body = await response.text();
   if (body.includes("createAccountAlreadyExist") || response.status === 400) {
-    return { funded: false, note: "Account already exists and is funded." };
+    return { funded: false, note: "Your wallet was already funded." };
   }
 
   throw new Error(`Friendbot failed (${response.status}): ${body.slice(0, 200)}`);
+}
+
+/**
+ * Has this wallet already paid itself in XLM?
+ *
+ * This is the record left behind by the signing check, and it is what lets that
+ * step stay ticked across a reload instead of depending on this session's
+ * memory of the click. Matched on a self-payment rather than on "signed
+ * anything" so that adding a trustline later cannot tick the step off on its
+ * behalf.
+ */
+export async function hasSelfPayment(address: string): Promise<boolean> {
+  try {
+    const page = await horizon
+      .payments()
+      .forAccount(address)
+      .order("desc")
+      .limit(200)
+      .call();
+
+    return page.records.some(
+      (record) =>
+        record.type === "payment" &&
+        record.asset_type === "native" &&
+        record.from === address &&
+        record.to === address,
+    );
+  } catch (error) {
+    // An account nobody has funded yet has no history, which reads as a 404.
+    if (error instanceof NotFoundError) return false;
+    throw error;
+  }
 }
 
 /** Native XLM balance as a decimal string, or null if the account does not exist yet. */
