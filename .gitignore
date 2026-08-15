@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Builds
+dist/
+build/
+out/
+.next/
+.vercel/
+.turbo/
+target/
+
+# Environment — commit .env.example, never .env
+.env
+.env.*
+!.env.example
+
+# Stellar / Soroban local state
+.soroban/
+.stellar/
+
+# Test and coverage
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
