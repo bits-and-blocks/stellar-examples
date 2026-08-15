@@ -4,10 +4,11 @@ Email login to funded testnet contribution in one flow: Privy embedded wallet,
 then test USDC into a pool via the Stellar Asset Contract with transfer results
 checked. The commit history is the integration timer.
 
-**Status: Phase 1 complete.** Email login to a signed, confirmed testnet
-transaction from a Privy embedded wallet, with no seed phrase at any point.
-Measured at **15 minutes 8 seconds** — see
-[Integration timer](#integration-timer).
+**Status: wallet and signing working.** Email login to a signed, confirmed
+testnet transaction from a Privy embedded wallet, with no seed phrase at any
+point. Measured at **15 minutes 8 seconds** — see
+[Integration timer](#integration-timer). The trustline and contribution flow
+land next.
 
 ## The claim this validates
 
@@ -16,8 +17,8 @@ Measured at **15 minutes 8 seconds** — see
 > wire that up in under a day.
 
 The second half is the part that is easy to assert and hard to prove, so this
-repo measures it. The commit history is the instrument: the elapsed time between
-the commit titled `integration start` and the commit titled
+example measures it. The commit history is the instrument: the elapsed time
+between the commit titled `integration start` and the commit titled
 `first signed testnet tx` is the number. It is whatever it turns out to be.
 
 ## Which shape Privy's Stellar support takes
@@ -78,8 +79,8 @@ tx.signatures.push(
 );
 ```
 
-That is the whole Privy-specific surface area. Everything else in this repo is
-ordinary `@stellar/stellar-sdk` usage that would look the same behind any
+That is the whole Privy-specific surface area. Everything else in this example
+is ordinary `@stellar/stellar-sdk` usage that would look the same behind any
 signer, which is also what makes the Phase 1 decision gate cheap: swapping to
 Stellar Wallets Kit would replace these lines and nothing else.
 
@@ -98,13 +99,15 @@ ever valid on testnet. Submitted to mainnet it would be rejected as
 ## Running it
 
 ```bash
-pnpm install
+npm install
 cp .env.example .env.local   # fill in NEXT_PUBLIC_PRIVY_APP_ID
-pnpm dev
+npm run dev
 ```
 
-CI runs `pnpm lint`, `pnpm typecheck` and `pnpm build` on every push and pull
-request. The build takes no secrets.
+The repository's shared CI installs and builds every example under `examples/`
+on each push and pull request, so this directory is covered by `npm install` and
+`npm run build`. `npm run lint` and `npm run typecheck` are available locally.
+The build takes no secrets.
 
 ## Integration timer
 
@@ -113,7 +116,7 @@ testnet.
 
 | | Evidence | Time (UTC) |
 | --- | --- | --- |
-| Start | commit [`c546ce2`](../../commit/c546ce2), the last pre-integration commit | 2026-08-15 00:19:54 |
+| Start | commit [`c546ce2`](https://github.com/bits-and-blocks/privy-stellar-onboarding/commit/c546ce2), the last pre-integration commit | 2026-08-15 00:19:54 |
 | End | ledger 4146515, [tx `1fe8822…`](https://stellar.expert/explorer/testnet/tx/1fe8822065555a7c716ba7514908fa899d15a40593984aa7277b0e5811c84c4d) | 2026-08-15 00:35:02 |
 
 ### Why these endpoints, and not two commit hashes
@@ -128,11 +131,19 @@ curl -s https://horizon-testnet.stellar.org/transactions/1fe8822065555a7c716ba75
   | grep created_at
 ```
 
-The start marker is a commit, because "when did setup end" is a claim about this
-repo and the commit log is the right record for it. Using the *last
+The start marker is a commit, because "when did setup end" is a claim about the
+work and the commit log is the right record for it. Using the *last
 pre-integration* commit rather than a `integration start` marker also makes the
 number a conservative upper bound: it counts the gap before work resumed as
 integration time, so the real figure is lower.
+
+`c546ce2` lives in
+[bits-and-blocks/privy-stellar-onboarding](https://github.com/bits-and-blocks/privy-stellar-onboarding),
+the standalone repository this example was developed in and migrated from. That
+repo is archived and read-only. The link points there rather than at the
+equivalent commit in this repo deliberately: migrating rewrote every hash, and a
+frozen external repository is a better record of "when did setup end" than one
+that is still being written to.
 
 ### What the 15 minutes does and does not include
 
@@ -215,4 +226,4 @@ _Phase 2 contribution hashes will be added here._
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0 — see the [LICENSE](../../LICENSE) at the repository root.

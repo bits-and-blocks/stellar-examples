@@ -1,0 +1,4 @@
+# Everything else is covered by the repository-root .gitignore. These two are
+# Next.js build artifacts it does not list.
+*.tsbuildinfo
+next-env.d.ts
