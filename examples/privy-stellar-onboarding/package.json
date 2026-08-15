@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:contribution": "tsx scripts/verify-contribution.mts"
   },
   "dependencies": {
     "@privy-io/react-auth": "3.37.1",
@@ -22,6 +23,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   }
 }

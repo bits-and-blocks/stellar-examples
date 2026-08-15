@@ -14,6 +14,18 @@ import {
 } from "@stellar/stellar-sdk";
 import { findStellarWallet } from "@/lib/privy/stellar-wallet";
 import {
+  POOL_ADDRESS,
+  USDC_CODE,
+  USDC_SAC_ID,
+  isContractAddress,
+} from "@/lib/stellar/assets";
+import {
+  addTrustline,
+  contribute,
+  getUsdcBalance,
+} from "@/lib/stellar/contribute";
+import { ContributionError, describeFailure } from "@/lib/stellar/errors";
+import {
   fundWithFriendbot,
   getXlmBalance,
   horizon,
@@ -31,9 +43,16 @@ export default function Home() {
   const { signRawHash } = useSignRawHash();
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [balance, setBalance] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{
+    summary: string;
+    remedy: string;
+    kind: string;
+  } | null>(null);
+  const [xlm, setXlm] = useState<string | null>(null);
+  const [usdc, setUsdc] = useState<string | null>(null);
+  const [amount, setAmount] = useState("1");
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [contributions, setContributions] = useState<string[]>([]);
   const [log, setLog] = useState<string[]>([]);
 
   const wallet = findStellarWallet(user);
@@ -45,39 +64,57 @@ export default function Home() {
       `${new Date().toLocaleTimeString()}  ${message}`,
     ]);
 
-  const refreshBalance = useCallback(async (target: string) => {
-    setBalance(await getXlmBalance(target));
+  const refresh = useCallback(async (target: string) => {
+    const [nextXlm, nextUsdc] = await Promise.all([
+      getXlmBalance(target),
+      getUsdcBalance(target).catch(() => null),
+    ]);
+    setXlm(nextXlm);
+    setUsdc(nextUsdc);
   }, []);
 
-  // Load the balance once an address exists, so a returning user sees their
-  // funded account without having to press anything. The cancelled flag keeps
-  // a slow response for an old address from overwriting a newer one.
+  // Load balances once an address exists. The cancelled flag stops a slow
+  // response for an old address from overwriting a newer one.
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
-    getXlmBalance(address).then(
-      (value) => {
-        if (!cancelled) setBalance(value);
+    Promise.all([
+      getXlmBalance(address),
+      getUsdcBalance(address).catch(() => null),
+    ]).then(
+      ([nextXlm, nextUsdc]) => {
+        if (cancelled) return;
+        setXlm(nextXlm);
+        setUsdc(nextUsdc);
       },
-      () => {
-        if (!cancelled) setBalance(null);
-      },
+      () => {},
     );
     return () => {
       cancelled = true;
     };
   }, [address]);
 
-  /** Wraps an action so every failure surfaces instead of vanishing into a console. */
+  /**
+   * Runs an action and turns any failure into something the donor can act on.
+   * A ContributionError already carries a classified cause; anything else is
+   * genuinely unexpected and is shown raw rather than dressed up.
+   */
   const run = async (label: string, action: () => Promise<void>) => {
     setBusy(label);
-    setError(null);
+    setFailure(null);
     try {
       await action();
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : String(caught);
-      setError(message);
-      note(`✗ ${label} failed: ${message}`);
+      if (caught instanceof ContributionError) {
+        const described = describeFailure(caught.failure);
+        setFailure({ ...described, kind: caught.failure.kind });
+        note(`✗ ${caught.failure.kind}: ${described.summary}`);
+      } else {
+        const message =
+          caught instanceof Error ? caught.message : String(caught);
+        setFailure({ summary: message, remedy: "", kind: "unexpected" });
+        note(`✗ ${label} failed: ${message}`);
+      }
     } finally {
       setBusy(null);
     }
@@ -94,17 +131,12 @@ export default function Home() {
       if (!address) throw new Error("No wallet address.");
       const { note: outcome } = await fundWithFriendbot(address);
       note(`✓ Friendbot: ${outcome}`);
-      await refreshBalance(address);
+      await refresh(address);
     });
 
   const onSendPayment = () =>
     run("Signing and submitting", async () => {
       if (!address) throw new Error("No wallet address.");
-
-      // A 1 XLM payment from the account to itself. Deliberately trivial: it
-      // needs no counterparty and cannot fail on `op_no_destination`, so what
-      // it actually proves is that a Privy-held key produced a signature
-      // Horizon accepts.
       const account = await horizon.loadAccount(address);
       const tx = new TransactionBuilder(account, {
         fee: BASE_FEE,
@@ -120,15 +152,34 @@ export default function Home() {
         .setTimeout(180)
         .build();
 
-      note(`Built payment, hash ${tx.hash().toString("hex").slice(0, 16)}…`);
-
       await signWithPrivy(tx, address, signRawHash);
-      note("Privy returned a signature; submitting to Horizon.");
-
       const result = await horizon.submitTransaction(tx);
       setTxHash(result.hash);
-      note(`✓ Submitted in ledger ${result.ledger}: ${result.hash}`);
-      await refreshBalance(address);
+      note(`✓ Payment in ledger ${result.ledger}: ${result.hash}`);
+      await refresh(address);
+    });
+
+  const onAddTrustline = () =>
+    run("Adding trustline", async () => {
+      if (!address) throw new Error("No wallet address.");
+      const hash = await addTrustline(address, signRawHash);
+      note(`✓ ${USDC_CODE} trustline established: ${hash}`);
+      await refresh(address);
+    });
+
+  const onContribute = (options?: {
+    skipPreflight?: boolean;
+    /** Explicit amount for the failure demos, which must not depend on a
+     *  setAmount() that has not been applied to state yet. */
+    amountOverride?: string;
+  }) =>
+    run("Contributing", async () => {
+      if (!address) throw new Error("No wallet address.");
+      const value = options?.amountOverride ?? amount;
+      const hash = await contribute(address, value, signRawHash, options);
+      setContributions((previous) => [hash, ...previous]);
+      note(`✓ Contributed ${value} ${USDC_CODE}: ${hash}`);
+      await refresh(address);
     });
 
   if (!ready) {
@@ -139,11 +190,14 @@ export default function Home() {
     );
   }
 
+  const hasTrustline = usdc !== null;
+
   return (
     <main>
       <h1>Privy → Stellar onboarding</h1>
       <p style={{ color: "var(--muted)", marginTop: 0 }}>
-        Phase 1: email login to a signed testnet transaction, no seed phrase.
+        Email login to a funded testnet contribution, no seed phrase at any
+        point. Testnet only.
       </p>
 
       <h2>1. Log in</h2>
@@ -173,9 +227,11 @@ export default function Home() {
                   {address}
                 </a>
               </dd>
-              <dt>XLM balance</dt>
+              <dt>XLM</dt>
+              <dd className="mono">{xlm ?? "account not created yet"}</dd>
+              <dt>{USDC_CODE}</dt>
               <dd className="mono">
-                {balance === null ? "account not created yet" : balance}
+                {usdc ?? "no trustline — cannot hold this asset"}
               </dd>
             </dl>
           ) : (
@@ -195,10 +251,125 @@ export default function Home() {
                 </button>
               </p>
 
-              <h2>4. Sign and submit</h2>
+              <h2>4. Prove signing works</h2>
               <p>
                 <button onClick={onSendPayment} disabled={busy !== null}>
                   Send 1 XLM to self
+                </button>
+                {txHash && (
+                  <>
+                    {" "}
+                    <a
+                      href={explorerTxUrl(txHash)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      view tx
+                    </a>
+                  </>
+                )}
+              </p>
+
+              <h2>5. {USDC_CODE} trustline</h2>
+              <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>
+                A Stellar account cannot receive an asset until it opts in. This
+                costs 0.5 XLM held in reserve, not spent. Without it, every
+                contribution below fails — which is the point of surfacing it as
+                its own step.
+              </p>
+              <p>
+                <button
+                  onClick={onAddTrustline}
+                  disabled={busy !== null || hasTrustline}
+                >
+                  {hasTrustline
+                    ? `${USDC_CODE} trustline established`
+                    : `Add ${USDC_CODE} trustline`}
+                </button>
+              </p>
+
+              <h2>6. Get test {USDC_CODE}</h2>
+              <p>
+                <a
+                  href="https://faucet.circle.com"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Circle testnet faucet
+                </a>{" "}
+                — choose Stellar, paste your address above, then{" "}
+                <button
+                  onClick={() => address && refresh(address)}
+                  disabled={busy !== null}
+                >
+                  refresh balances
+                </button>
+              </p>
+
+              <h2>7. Contribute</h2>
+              <dl>
+                <dt>Pool</dt>
+                <dd className="mono">
+                  {POOL_ADDRESS}{" "}
+                  <span style={{ color: "var(--muted)" }}>
+                    ({isContractAddress(POOL_ADDRESS)
+                      ? "contract"
+                      : "G-address, interim target"}
+                    )
+                  </span>
+                </dd>
+                <dt>Via SAC</dt>
+                <dd className="mono">{USDC_SAC_ID}</dd>
+              </dl>
+              <p>
+                <input
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  size={10}
+                  aria-label={`Amount of ${USDC_CODE}`}
+                  style={{
+                    font: "inherit",
+                    padding: "0.5rem",
+                    marginRight: "0.5rem",
+                    border: "1px solid var(--line)",
+                    borderRadius: 6,
+                    background: "transparent",
+                    color: "var(--fg)",
+                  }}
+                />
+                <button
+                  onClick={() => onContribute()}
+                  disabled={busy !== null}
+                >
+                  Contribute {USDC_CODE}
+                </button>
+              </p>
+
+              <h2>Deliberate failures</h2>
+              <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>
+                The same impossible contribution — 999999 {USDC_CODE} — sent
+                both ways. Both buttons fail; the difference is what the donor
+                is told. Skipping preflight does not cause the failure, it only
+                removes the early check, so the mistake arrives from Soroban as
+                a host error instead of as a sentence.
+              </p>
+              <p style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  onClick={() => onContribute({ amountOverride: "999999" })}
+                  disabled={busy !== null}
+                >
+                  Over-balance, checked
+                </button>
+                <button
+                  onClick={() =>
+                    onContribute({
+                      amountOverride: "999999",
+                      skipPreflight: true,
+                    })
+                  }
+                  disabled={busy !== null}
+                >
+                  Over-balance, unchecked
                 </button>
               </p>
             </>
@@ -208,19 +379,37 @@ export default function Home() {
 
       {busy && <p style={{ color: "var(--muted)" }}>{busy}…</p>}
 
-      {error && (
-        <p style={{ color: "var(--err)" }}>
-          <strong>Error:</strong> {error}
-        </p>
+      {failure && (
+        <div
+          style={{
+            border: "1px solid var(--err)",
+            borderRadius: 6,
+            padding: "0.9rem 1rem",
+            margin: "1rem 0",
+          }}
+        >
+          <p style={{ margin: "0 0 0.4rem", color: "var(--err)" }}>
+            <code>{failure.kind}</code> — {failure.summary}
+          </p>
+          {failure.remedy && (
+            <p style={{ margin: 0, fontSize: "0.9rem" }}>{failure.remedy}</p>
+          )}
+        </div>
       )}
 
-      {txHash && (
-        <p style={{ color: "var(--ok)" }}>
-          <strong>Signed and submitted.</strong>{" "}
-          <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer">
-            View on stellar.expert
-          </a>
-        </p>
+      {contributions.length > 0 && (
+        <>
+          <h2>Contributions</h2>
+          <ul>
+            {contributions.map((hash) => (
+              <li key={hash} className="mono">
+                <a href={explorerTxUrl(hash)} target="_blank" rel="noreferrer">
+                  {hash}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       {log.length > 0 && (
