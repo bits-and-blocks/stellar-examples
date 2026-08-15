@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-
-export type LogEntry = {
-  id: number;
-  time: string;
-  text: string;
-  tone: "success" | "info" | "error";
-};
+import type { LogEntry } from "@/lib/ui/activity-log";
 
 /** Four characters each, so the column lines up in the monospaced log. */
 const TAGS = {
@@ -18,7 +12,13 @@ const TAGS = {
 } as const;
 
 /** A running record of what happened, folded away until someone wants it. */
-export function ActivityLog({ entries }: { entries: LogEntry[] }) {
+export function ActivityLog({
+  entries,
+  onClear,
+}: {
+  entries: readonly LogEntry[];
+  onClear: () => void;
+}) {
   const [open, setOpen] = useState(false);
   if (entries.length === 0) return null;
 
@@ -29,13 +29,22 @@ export function ActivityLog({ entries }: { entries: LogEntry[] }) {
         style={{ alignItems: "center", justifyContent: "space-between" }}
       >
         <h2 className="card-title">Activity</h2>
-        <button
-          type="button"
-          className="btn btn-quiet"
-          onClick={() => setOpen((value) => !value)}
-        >
-          {open ? "Hide" : `Show ${entries.length}`}
-        </button>
+        <div className="row">
+          {/* Only offered while the log is open. Throwing away a record you
+              cannot see is not a choice worth putting in front of anyone. */}
+          {open && (
+            <button type="button" className="btn btn-quiet" onClick={onClear}>
+              Clear
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-quiet"
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? "Hide" : `Show ${entries.length}`}
+          </button>
+        </div>
       </header>
 
       <AnimatePresence initial={false}>

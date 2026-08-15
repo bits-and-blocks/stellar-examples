@@ -418,6 +418,41 @@ code,
   }
 }
 
+/* The body's own contents, stacked. Its own element rather than the padded
+   wrapper's job, so a locked step can fade everything here without taking the
+   reason it is locked down with it. */
+.card-stack,
+.card-locked {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card-locked {
+  opacity: 0.45;
+}
+
+/* One layer of fading. The region is already dim, and a disabled control
+   fading again on top of that left the buttons close to invisible. */
+.card-locked .btn:disabled,
+.card-locked .field input:disabled {
+  opacity: 1;
+}
+
+.locked-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+.locked-note svg {
+  flex: none;
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;

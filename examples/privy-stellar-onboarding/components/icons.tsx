@@ -41,6 +41,16 @@ export function NoChangeIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** A step that is not open yet because an earlier one has not been done. */
+export function LockIcon({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <rect x="4" y="10.5" width="16" height="10" rx="2.5" />
+      <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+    </svg>
+  );
+}
+
 export function SpinnerIcon({ size = 16 }: IconProps) {
   return (
     <svg {...base(size)} className="spinner">

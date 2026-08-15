@@ -15,7 +15,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { AccountBar } from "@/components/AccountBar";
 import { ActionButton } from "@/components/ActionButton";
-import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
+import { ActivityLog } from "@/components/ActivityLog";
 import { Card } from "@/components/Card";
 import { Footer } from "@/components/Footer";
 import { ResultPanel } from "@/components/ResultPanel";
@@ -48,10 +48,16 @@ import {
 import { NETWORK_PASSPHRASE, explorerAccountUrl } from "@/lib/stellar/network";
 import { signWithPrivy } from "@/lib/stellar/sign";
 import {
+  clearActivity,
+  recordActivity,
+  useActivityLog,
+  type LogEntry,
+} from "@/lib/ui/activity-log";
+import {
   recordContribution,
   useContributions,
 } from "@/lib/ui/contributions";
-import { useActions } from "@/lib/ui/use-actions";
+import { ActionError, useActions } from "@/lib/ui/use-actions";
 
 export default function Home() {
   const { ready, authenticated, user, login, logout } = usePrivy();
@@ -68,7 +74,9 @@ export default function Home() {
   // wallet cannot leave the previous one's tick behind.
   const [signedFor, setSignedFor] = useState<string | null>(null);
   const [amount, setAmount] = useState("1");
-  const [log, setLog] = useState<LogEntry[]>([]);
+
+  // Survives a reload, like the contributions below.
+  const log = useActivityLog();
 
   const wallet = findStellarWallet(user);
   const address = wallet?.address ?? null;
@@ -76,12 +84,18 @@ export default function Home() {
   // Survives a reload, unlike everything else on this page.
   const contributions = useContributions(address);
 
-  const note = useCallback((text: string, tone: LogEntry["tone"]) => {
-    setLog((entries) => [
-      { id: Date.now() + entries.length, time: clock(), text, tone },
-      ...entries,
-    ]);
-  }, []);
+  const note = useCallback(
+    (text: string, tone: LogEntry["tone"]) => recordActivity(text, tone),
+    [],
+  );
+
+  // The log is the account of one person's session, so it goes when they do.
+  // Left behind, the next person to sign in on this browser would open it to
+  // someone else's wallet address and balances.
+  const onLogout = useCallback(async () => {
+    await logout();
+    clearActivity();
+  }, [logout]);
 
   const actions = useActions(note);
 
@@ -149,15 +163,21 @@ export default function Home() {
       if (!address) throw new Error("You do not have a wallet address yet.");
       const { funded, note: outcome } = await fundWithFriendbot(address);
       const next = await refresh(address);
+
       // Friendbot only creates accounts, so a second ask is a no-op rather
-      // than a top-up. Reporting it as a success would be a lie about a
-      // balance that did not move.
-      return {
-        message: `${outcome} You ${funded ? "now" : "still"} hold ${
-          next.xlm ?? "0"
-        } XLM.`,
-        tone: funded ? "success" : "info",
-      };
+      // than a top-up. Asking for XLM and being given none is a failed
+      // attempt whatever Horizon makes of the request, so it is reported as
+      // one: a neutral "nothing changed" read as though it had worked.
+      if (!funded) {
+        throw new ActionError(
+          "Friendbot added nothing: your wallet already exists.",
+          `It only creates accounts on testnet and will not top up one it has already funded, so this is as much XLM as it will give you. You still hold ${
+            next.xlm ?? "0"
+          } XLM.`,
+        );
+      }
+
+      return { message: `${outcome} You now hold ${next.xlm ?? "0"} XLM.` };
     });
 
   const onSendPayment = () =>
@@ -207,6 +227,27 @@ export default function Home() {
       return { message: `Balances updated: ${next.xlm ?? "0"} XLM, ${held}.` };
     });
 
+  // Separate from the bar's refresh, which only reports. This one is a claim
+  // being checked, so it has an opinion about the answer.
+  const onCheckFaucet = () =>
+    actions.run("faucet-refresh", async () => {
+      if (!address) throw new Error("You do not have a wallet address yet.");
+      const next = await refresh(address);
+
+      // Pressing this before going to the faucet is the easy slip to make, and
+      // "0.0000000 USDC" states it as a fact rather than as something to fix.
+      if (!(Number(next.usdc ?? "0") > 0)) {
+        return {
+          message: `No ${USDC_CODE} has reached your wallet yet. Open the Circle faucet above, choose Stellar, and paste the address from the bar at the top, then check again.`,
+          tone: "info" as const,
+        };
+      }
+
+      return {
+        message: `The faucet came through: you hold ${next.usdc} ${USDC_CODE}.`,
+      };
+    });
+
   const onContribute =
     (
       id: string,
@@ -251,6 +292,13 @@ export default function Home() {
   const hasUsdc = usdc !== null && Number(usdc) > 0;
   const email = user?.email?.address ?? user?.id ?? "Signed in";
   const busy = actions.busy;
+
+  // Everything from the faucet onwards moves USDC, and a wallet that has not
+  // opted in cannot receive any of it. Left open, those steps fail in ways
+  // that look like the app is broken rather than like a step was skipped.
+  const needsTrustline = hasTrustline
+    ? undefined
+    : `Switch ${USDC_CODE} on in step 3 first. Until you do, your wallet cannot receive or send it.`;
 
   if (!authenticated) {
     return (
@@ -309,7 +357,7 @@ export default function Home() {
           loadingBalances={loadingBalances}
           refreshStatus={actions.get("bar-refresh").status}
           onRefresh={onRefreshBalances("bar-refresh")}
-          onLogout={logout}
+          onLogout={onLogout}
           usdcCode={USDC_CODE}
         />
 
@@ -408,8 +456,9 @@ export default function Home() {
             <Card
               step={4}
               title={`Claim some test ${USDC_CODE}`}
-              note="Circle gives out free test tokens. Pick Stellar, paste the address from the bar at the top, then come back and refresh."
+              note="Circle gives out free test tokens. Pick Stellar, paste your address from the bar at the top, then come back and refresh."
               done={hasUsdc}
+              locked={needsTrustline}
             >
               <div className="row">
                 <a
@@ -424,8 +473,8 @@ export default function Home() {
                 </a>
                 <ActionButton
                   status={actions.get("faucet-refresh").status}
-                  onClick={onRefreshBalances("faucet-refresh")}
-                  disabled={busy}
+                  onClick={onCheckFaucet}
+                  disabled={busy || !hasTrustline}
                   pending="Checking"
                 >
                   I claimed it, check my balance
@@ -439,6 +488,7 @@ export default function Home() {
               title="Contribute"
               note={`Send ${USDC_CODE} from your wallet to the pool.`}
               done={contributions.length > 0}
+              locked={needsTrustline}
             >
               {/* Where the money goes comes before the button that sends it. */}
               <dl className="kv">
@@ -462,6 +512,7 @@ export default function Home() {
                   <input
                     value={amount}
                     onChange={(event) => setAmount(event.target.value)}
+                    disabled={!hasTrustline}
                     inputMode="decimal"
                     aria-label={`Amount of ${USDC_CODE} to contribute`}
                   />
@@ -470,7 +521,7 @@ export default function Home() {
                 <ActionButton
                   status={actions.get("contribute").status}
                   onClick={onContribute("contribute")}
-                  disabled={busy}
+                  disabled={busy || !hasTrustline}
                   variant="primary"
                   pending="Sending"
                 >
@@ -528,6 +579,7 @@ export default function Home() {
               step={6}
               title="See what a failure looks like"
               note={`Both buttons try to send 999999 ${USDC_CODE}, which you do not have, so both fail. The difference is what you are told. With the check on, you get a plain sentence. With it off, the error comes straight back from the network.`}
+              locked={needsTrustline}
             >
               <div className="row">
                 <ActionButton
@@ -535,7 +587,7 @@ export default function Home() {
                   onClick={onContribute("fail-checked", {
                     amountOverride: "999999",
                   })}
-                  disabled={busy}
+                  disabled={busy || !hasTrustline}
                   pending="Sending"
                 >
                   Too much, with the check
@@ -546,7 +598,7 @@ export default function Home() {
                     amountOverride: "999999",
                     skipPreflight: true,
                   })}
-                  disabled={busy}
+                  disabled={busy || !hasTrustline}
                   pending="Sending"
                 >
                   Too much, no check
@@ -558,7 +610,7 @@ export default function Home() {
           </>
         )}
 
-        <ActivityLog entries={log} />
+        <ActivityLog entries={log} onClear={clearActivity} />
       </div>
       <Footer />
     </>
@@ -572,11 +624,3 @@ type Balances = {
   /** null means the wallet has not switched USDC on. */
   usdc: string | null;
 };
-
-function clock() {
-  return new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}

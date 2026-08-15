@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
-import { CheckIcon } from "./icons";
+import { CheckIcon, LockIcon } from "./icons";
 
 type Props = {
   /** Step number in the walkthrough. Left out for cards that are not a step. */
@@ -10,10 +10,15 @@ type Props = {
   title: string;
   note?: ReactNode;
   done?: boolean;
+  /**
+   * Why this step cannot be used yet. Set it and the whole body goes inert,
+   * so nothing inside can be clicked, tabbed to, or read out as available.
+   */
+  locked?: ReactNode;
   children: ReactNode;
 };
 
-export function Card({ step, title, note, done, children }: Props) {
+export function Card({ step, title, note, done, locked, children }: Props) {
   return (
     <motion.section
       layout
@@ -35,7 +40,17 @@ export function Card({ step, title, note, done, children }: Props) {
       </header>
 
       <div className={`card-body${step !== undefined ? " card-body-step" : ""}`}>
-        {children}
+        {/* Outside the inert region on purpose: the one thing you can still
+            read here is the reason you cannot do anything else. */}
+        {locked && (
+          <p className="locked-note">
+            <LockIcon size={13} />
+            {locked}
+          </p>
+        )}
+        <div className={locked ? "card-locked" : "card-stack"} inert={!!locked}>
+          {children}
+        </div>
       </div>
     </motion.section>
   );
