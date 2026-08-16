@@ -1,0 +1,56 @@
+name: Reproducible build
+
+# Scoped to the one example that makes this claim. The generic build matrix in
+# ci.yml discovers examples by package.json / Cargo.toml; this job is different
+# in kind — it asserts a property of a deployment, not that code compiles.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/soroban-reproducible-build/**"
+      - ".github/workflows/reproducible-build.yml"
+  pull_request:
+    paths:
+      - "examples/soroban-reproducible-build/**"
+      - ".github/workflows/reproducible-build.yml"
+  # Testnet resets and TTL expiry can invalidate the deployment without anyone
+  # touching the code, so check on a schedule too rather than finding out from
+  # an unrelated PR going red.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Rebuild and compare against testnet
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/soroban-reproducible-build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # No Rust toolchain is installed here on purpose. If the runner could
+      # influence the build, a green job would only prove something about this
+      # runner. Everything that compiles happens inside the pinned image.
+      - name: Show the pin
+        run: cat build.env
+
+      - name: Rebuild from source in the pinned container
+        run: bash scripts/build.sh
+
+      - name: Assert the rebuild matches the deployed contract
+        run: |
+          npm install --no-audit --no-fund
+          node scripts/check-deployed-hash.mjs
+
+      # Behaviour, not provenance — a reproducible build of a broken contract
+      # still reproduces. Runs after the assertion above so the headline claim
+      # is the first thing to go red.
+      - name: Contract unit tests
+        run: bash scripts/test.sh

@@ -29,7 +29,10 @@ jobs:
 
       - name: Check no .env is committed
         run: |
-          found=$(git ls-files '*.env' '**/.env' | grep -v '\.env\.example$' || true)
+          # Only dotfiles a secret would actually live in — `.env`, `.env.local`,
+          # `.env.production` — at any depth. Not every path ending in ".env":
+          # a file like build.env is committed config, not a leaked secret.
+          found=$(git ls-files -- '.env' '.env.*' '**/.env' '**/.env.*' | grep -v '\.env\.example$' || true)
           if [ -n "$found" ]; then
             echo "::error::committed .env file(s): $found"
             exit 1
