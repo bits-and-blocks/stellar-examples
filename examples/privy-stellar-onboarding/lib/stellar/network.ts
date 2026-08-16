@@ -18,8 +18,36 @@ export const HORIZON_URL = "https://horizon-testnet.stellar.org";
 export const SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org";
 export const FRIENDBOT_URL = "https://friendbot.stellar.org";
 
-export const explorerTxUrl = (hash: string) =>
-  `https://stellar.expert/explorer/testnet/tx/${hash}`;
+/**
+ * The block explorers a transaction can be opened in.
+ *
+ * Both point at their testnet views, which is the only network this app can
+ * produce a transaction for. A mainnet link would 404 on every hash here.
+ */
+export type Explorer = {
+  id: "expert" | "chain";
+  name: string;
+  txUrl: (hash: string) => string;
+  accountUrl: (address: string) => string;
+};
+
+export const EXPLORERS: readonly Explorer[] = [
+  {
+    id: "expert",
+    name: "Stellar Expert",
+    txUrl: (hash) => `https://stellar.expert/explorer/testnet/tx/${hash}`,
+    accountUrl: (address) =>
+      `https://stellar.expert/explorer/testnet/account/${address}`,
+  },
+  {
+    id: "chain",
+    name: "StellarChain",
+    txUrl: (hash) => `https://testnet.stellarchain.io/tx/${hash}`,
+    accountUrl: (address) => `https://testnet.stellarchain.io/address/${address}`,
+  },
+];
+
+export const explorerTxUrl = (hash: string) => EXPLORERS[0].txUrl(hash);
 
 export const explorerAccountUrl = (address: string) =>
-  `https://stellar.expert/explorer/testnet/account/${address}`;
+  EXPLORERS[0].accountUrl(address);

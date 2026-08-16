@@ -4,11 +4,11 @@ Email login to funded testnet contribution in one flow: Privy embedded wallet,
 then test USDC into a pool via the Stellar Asset Contract with transfer results
 checked. The commit history is the integration timer.
 
-**Status: wallet and signing working.** Email login to a signed, confirmed
-testnet transaction from a Privy embedded wallet, with no seed phrase at any
-point. Measured at **15 minutes 8 seconds** — see
-[Integration timer](#integration-timer). The trustline and contribution flow
-land next.
+**Status: working.** Email login to a USDC contribution through the Stellar
+Asset Contract, with no seed phrase at any point. The Privy integration measured
+**15 minutes 8 seconds** — see [Integration timer](#integration-timer). The
+contribution path, including every failure mode, is verified against live
+testnet by `npm run verify:contribution`.
 
 ## The claim this validates
 
@@ -169,6 +169,105 @@ Phase 1 was a gate. If Privy's embedded wallet could not produce a signature
 Horizon accepts, the plan was to stop, swap to Stellar Wallets Kit, and revise
 the claim. It signed and Horizon accepted it, so the flow continues on Privy.
 
+## The contribution flow
+
+A donor must hold USDC before they can contribute it, and on Stellar holding an
+asset is an explicit act. The flow is therefore four steps, not one, and the app
+shows all four rather than hiding them:
+
+1. **Trustline.** `changeTrust` to Circle's testnet USDC. Until this exists the
+   wallet cannot receive the asset *at all* — not "the transfer fails", but the
+   account has no place to put it. Costs 0.5 XLM held in reserve, not spent.
+2. **Acquire USDC.** Circle's [testnet faucet](https://faucet.circle.com),
+   20 USDC per address every 2 hours.
+3. **Preflight.** Read the on-chain state and refuse early if it cannot work.
+4. **Contribute.** `transfer` on the Stellar Asset Contract.
+
+Circle's testnet USDC was checked rather than assumed: the issuer
+`GBBD47IF…AQH3ZLLFLA5` publishes `home_domain: centre.io`, carries ~55k
+trustlines, and **its SAC is already deployed** at `CBIELTK6…`, so contributions
+need no deployment step. The SAC address is derived from the asset and network
+passphrase rather than configured, so a wrong-network build would compute an
+address that does not exist instead of quietly talking to the wrong contract.
+
+### Three details that are easy to get wrong
+
+**Sign after preparing, never before.** Simulation determines the footprint and
+resource fees, and assembling those into the transaction produces a *different*
+transaction with a different hash. A signature taken before
+`assembleTransaction` is dead on arrival.
+
+**`from` is the transaction source, so there is no auth entry to sign.** The SAC
+calls `require_auth` on the sending address. When that address is also the
+transaction's source account, the ordinary transaction signature satisfies it.
+If the two ever diverge you must sign a `SorobanAuthorizationEntry` separately,
+which is considerably harder with a raw-hash signer. Keeping them identical is
+what makes this integration one signature rather than two mechanisms.
+
+**Trustlines are asymmetric between the interim and final targets.** The interim
+G-address recipient needs its own USDC trustline. The final pool contract, a
+C-address, does not, because contract balances live in contract storage.
+`preflight` branches on the address prefix, so swapping
+`NEXT_PUBLIC_POOL_ADDRESS` from one to the other needs no code change.
+
+### Failure modes are outcomes, not one error string
+
+Simulation would catch most of these, but only as an opaque host error. Reading
+the state directly means the donor is told which account is short and by how
+much. [`lib/stellar/errors.ts`](lib/stellar/errors.ts) models four outcomes:
+
+| Outcome | Detected by | What the donor is told |
+| --- | --- | --- |
+| `missing-trustline` | preflight, per account | which account, and that a C-address would not need one |
+| `insufficient-balance` | preflight | held versus requested |
+| `simulation-failed` | Soroban simulation | the host error, and that it cost no fee |
+| `submission-failed` | send / poll | that signing worked and the network did not accept it |
+
+The app has two buttons that deliberately fail. Both send the same impossible
+contribution — 999999 USDC — and differ only in whether preflight runs.
+**Too much, with the check** produces `insufficient-balance` with the held and
+requested amounts. **Too much, no check** skips preflight, so the same mistake
+arrives from Soroban as a host error instead.
+
+Worth being precise about what `skipPreflight` does, because the first version
+of this demo got it wrong: it does not induce a failure. It removes an early
+check. A contribution that would have succeeded still succeeds without it — as
+one of the transactions below demonstrates, having been sent through that path
+by accident. Only when paired with a genuinely impossible contribution does it
+show the ugly error it is meant to show.
+
+## Verifying the contribution path
+
+```bash
+npm run verify:contribution
+```
+
+[`scripts/verify-contribution.mts`](scripts/verify-contribution.mts) runs the
+real `contribute`, `addTrustline` and `preflight` against live testnet, with a
+local `Keypair` substituted for Privy through the identical interface. It
+asserts every failure mode, then performs a real SAC transfer and checks both
+balances moved:
+
+```
+✅ missing trustline (donor)
+✅ missing trustline surfaces from Soroban when preflight is skipped
+✅ changeTrust signed by the stand-in signer
+✅ insufficient balance — you have 0, this would send 5
+✅ missing trustline (recipient)
+✅ SAC transfer accepted
+✅ donor debited — balance 75.0000000
+✅ pool credited — balance 25.0000000
+```
+
+It uses a throwaway issuer rather than Circle's USDC because the success case
+needs the script to mint itself a supply and Circle's faucet is captcha-gated.
+The SAC is generated per-asset by the protocol and is the same contract either
+way. The script deploys that SAC itself with `createStellarAssetContract`, which
+is the step Circle's USDC does not need and a fresh issuer does.
+
+It is not part of CI: it spends real testnet ledger time and depends on
+Friendbot being up, so a network hiccup would show as a broken build.
+
 ## Verifying the signature glue without Privy
 
 [`lib/stellar/sign.ts`](lib/stellar/sign.ts) is the only component that can
@@ -187,17 +286,40 @@ failure in the real flow could only be Privy or the app wiring.
 Every transaction below was signed by a key held in a Privy embedded wallet,
 created from an email address with no seed phrase shown at any point.
 
-| Phase | What it proves | Transaction |
-| --- | --- | --- |
-| 1 | A Privy-held key produces a signature Horizon accepts | [`1fe8822…`](https://stellar.expert/explorer/testnet/tx/1fe8822065555a7c716ba7514908fa899d15a40593984aa7277b0e5811c84c4d) |
+| Phase | What it proves | Signer | Transaction |
+| --- | --- | --- | --- |
+| 1 | A Privy-held key produces a signature Horizon accepts | Privy | [`1fe8822…`](https://stellar.expert/explorer/testnet/tx/1fe8822065555a7c716ba7514908fa899d15a40593984aa7277b0e5811c84c4d) |
+| 1 | The `DecoratedSignature` glue is correct independently of Privy | stand-in | [`e477097…`](https://stellar.expert/explorer/testnet/tx/e47709761bf1351e38c4ad5435963c9cca05561e4573b368d5f7ef82f1d3c0c5) |
+| 2 | A SAC `transfer` moves the asset and both balances change | stand-in | [`0aece5d…`](https://stellar.expert/explorer/testnet/tx/0aece5d4cc8e9ba92b2ee7790ebc3bd0763df7a2a2dc765b0829abcf8c2e09c5) |
 
-_Phase 2 contribution hashes will be added here._
+The signer column is not decoration. Only the first row was signed by a Privy
+embedded wallet; the other two used a local keypair through the identical
+interface, to isolate the Stellar mechanics from Privy's signing service.
+
+### Contributions
+
+Real USDC into the pool through the Stellar Asset Contract, each signed by a
+Privy embedded wallet created from an email address. 1 USDC each, from
+`GCDAQBYC…` to the interim pool `GCVNURGF…`.
+
+| Transaction | Ledger | Path |
+| --- | --- | --- |
+| [`3aafb4e…`](https://stellar.expert/explorer/testnet/tx/3aafb4e748643ac67513558bde67cc6bd6e69e6c3465da23f9aa88042d4dec0c) | 4146886 | normal |
+| [`925ff0d…`](https://stellar.expert/explorer/testnet/tx/925ff0d9a1e7ab286333c66bbe146ad68245153c9e98b2e424d1e702dc87d5f8) | 4146890 | preflight skipped |
+| [`72a58b7…`](https://stellar.expert/explorer/testnet/tx/72a58b756f32280754948594409dd7e2f269c250b49af459dc347116fddd869d) | 4146895 | normal |
+
+The middle one succeeded while preflight was skipped, which is the correct
+outcome and the reason the failure demo was rewritten: the donor held a
+trustline and enough USDC, so there was nothing for preflight to catch.
 
 ## What this deliberately omits
 
 - **Mainnet.** Testnet only, enforced structurally as described above.
-- **A backend.** No server, no database, no persistence. Reload and the UI state
-  is gone; the chain is the only record.
+- **A backend.** No server, no database, no account of what happened that this
+  app owns. The activity log and the contribution list survive a reload in
+  `localStorage`, but they are a convenience cache of what this browser did and
+  nothing reads them as truth: the chain is the only record, and every entry
+  links out to it.
 - **Rust and contract deployment.** The pool contract is consumed as a
   configured address and treated as an interface. It is built and deployed in
   the contract-side repos.
@@ -209,6 +331,12 @@ _Phase 2 contribution hashes will be added here._
 - **Retry and resubmission logic** beyond surfacing the error. A real donor flow
   would handle `tx_bad_seq` and `TRY_AGAIN_LATER` with backoff; this one reports
   them.
+- **Removing a trustline, or reclaiming the 0.5 XLM reserve.** Adding one is
+  the step donors get stuck on, so that is the step this demonstrates.
+- **A unit test suite.** The verification scripts hit live testnet and are the
+  only tests here. That is a deliberate trade: mocking Horizon and Soroban would
+  test the mocks, and the failure modes worth proving are exactly the ones that
+  only real network state produces.
 
 ## Resources
 
