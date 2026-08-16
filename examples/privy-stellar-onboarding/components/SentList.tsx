@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import type { Contribution } from "@/lib/ui/contributions";
+import type { Sent } from "@/lib/ui/sent";
 import { formatExact, formatWhen, useNow } from "@/lib/ui/when";
 import { ExplorerLinks } from "./ExplorerLinks";
 
 /**
- * What this wallet has sent to the pool, newest first.
+ * What this wallet has sent from one step, newest first.
  *
- * This is where a contribution is confirmed. The step used to answer twice —
- * a sentence under the button saying it had been sent, and the same transaction
+ * This is where a payment is confirmed. The step used to answer twice — a
+ * sentence under the button saying it had been sent, and the same transaction
  * appearing at the top of this list a moment later — so the sentence went and
  * the arrival became the confirmation. For that to work the arrival has to be
  * visible: the new row drops in at the top, the rows below it slide down to
@@ -22,12 +22,29 @@ import { ExplorerLinks } from "./ExplorerLinks";
  * something new arrives — the arrival is the only confirmation there is, and
  * one that happens off screen is not one.
  */
-export function ContributionList({
+export function SentList({
   entries,
   code,
+  title,
+  destination,
+  latestOnly,
 }: {
-  entries: readonly Contribution[];
+  entries: readonly Sent[];
   code: string;
+  /** Heading over the list, e.g. "Your contributions". */
+  title: string;
+  /** Where these went, as the announcement says it, e.g. "the pool". */
+  destination: string;
+  /**
+   * Show the newest entry and nothing else, with no fold.
+   *
+   * A history is worth keeping where the step is the point of the page, as
+   * contributing is. Where the step is a check you run once to see that it
+   * works, the answer is the last one: a stack of identical rows says nothing
+   * the top one does not, and each is one more thing between you and the next
+   * step.
+   */
+  latestOnly?: boolean;
 }) {
   const now = useNow();
 
@@ -36,21 +53,26 @@ export function ContributionList({
   const [openedAt] = useState(() => Date.now());
 
   const newest = entries[0];
+  const shown = latestOnly ? entries.slice(0, 1) : entries;
   // The arrival is the confirmation, and an arrival is something you watch. The
   // count is in the sentence because a live region only speaks when its text
-  // changes, and two contributions of the same amount would otherwise read as
-  // the same event and be announced once.
+  // changes, and two payments of the same amount would otherwise read as the
+  // same event and be announced once. Where only the newest is kept on screen
+  // there is no count to give, so the time it happened separates one from the
+  // next instead.
   const arrival =
     newest && newest.at > openedAt
-      ? `Sent ${newest.amount} ${code} to the pool. ${entries.length} so far from this browser.`
+      ? latestOnly
+        ? `Sent ${newest.amount} ${code} to ${destination} at ${formatExact(newest.at)}.`
+        : `Sent ${newest.amount} ${code} to ${destination}. ${entries.length} so far from this browser.`
       : "";
 
   // Folding is held as the entry that was newest when it was folded, rather
   // than as a plain "closed". Anything newer than that is something the reader
   // has done since, so the list is open again for it without a second thought
-  // about how it got there.
+  // about how it got there. Nothing folds away a single row.
   const [foldedAt, setFoldedAt] = useState<string | null>(null);
-  const open = foldedAt === null || foldedAt !== newest?.hash;
+  const open = latestOnly || foldedAt === null || foldedAt !== newest?.hash;
 
   return (
     <>
@@ -74,18 +96,20 @@ export function ContributionList({
               style={{ justifyContent: "space-between", marginBottom: 12 }}
             >
               <p className="section-label" style={{ margin: 0 }}>
-                Your contributions, kept in this browser
+                {title}, kept in this browser
               </p>
-              <button
-                type="button"
-                className="btn btn-sm"
-                aria-expanded={open}
-                onClick={() =>
-                  setFoldedAt(open ? (newest?.hash ?? null) : null)
-                }
-              >
-                {open ? "Hide" : `Show ${entries.length}`}
-              </button>
+              {!latestOnly && (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  aria-expanded={open}
+                  onClick={() =>
+                    setFoldedAt(open ? (newest?.hash ?? null) : null)
+                  }
+                >
+                  {open ? "Hide" : `Show ${entries.length}`}
+                </button>
+              )}
             </div>
 
             <AnimatePresence initial={false}>
@@ -106,7 +130,7 @@ export function ContributionList({
                 >
                   <ul className="list">
                     <AnimatePresence initial={false}>
-                      {entries.map((entry) => (
+                      {shown.map((entry) => (
                         <motion.li
                           key={entry.hash}
                           // What moves the rows below out of the way. Each one animates
@@ -142,7 +166,7 @@ export function ContributionList({
                             </time>
                             <span className="mono list-hash">{entry.hash}</span>
                           </span>
-                          <ExplorerLinks hash={entry.hash} compact />
+                          <ExplorerLinks hash={entry.hash} />
                         </motion.li>
                       ))}
                     </AnimatePresence>

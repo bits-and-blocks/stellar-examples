@@ -1,24 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { kitSigner } from "@/lib/signing/wallets-kit";
 import {
   type KitConnection,
   connectKit,
   disconnectKit,
+  kitSigner,
   restoreKit,
 } from "@/lib/signing/wallets-kit";
 import { type Session, SessionContext } from "./session";
 
 /**
- * The Wallets Kit session: whichever wallet the user already has.
+ * The session: whichever wallet the user already has.
  *
  * There is no provider component to wrap the tree in — the Kit is a set of
  * static calls, not a React library — so this is the whole of it: restore what
  * the Kit remembers, and hand the page a way to connect, disconnect, and sign.
- *
- * Mounted only in `wallets-kit` mode, which is what keeps the Kit and its
- * modal out of a Privy build entirely.
  */
 export function KitSessionProvider({
   children,
@@ -63,16 +60,12 @@ export function KitSessionProvider({
 
   const value = useMemo<Session>(
     () => ({
-      mode: "wallets-kit",
       ready,
       connected: connection !== null,
       address: connection?.address ?? null,
       label: connection?.wallet ?? "No wallet connected",
       connect,
       disconnect,
-      // Nothing to create: a wallet the user already installed already has an
-      // account, and this page could not make it one if it wanted to.
-      createWallet: null,
       signer: connection ? kitSigner(connection.address) : null,
     }),
     [ready, connection, connect, disconnect],

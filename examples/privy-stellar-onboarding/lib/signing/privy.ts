@@ -64,8 +64,9 @@ export function privySigner(
         }),
       );
 
-      // The same object it was handed, signed. The Kit implementation cannot
-      // promise that, which is why the interface says to use the return value.
+      // The same object it was handed, signed — which is an accident of Privy
+      // signing a hash rather than a transaction, not something the interface
+      // promises. Hence "use the return value" in `signer.ts`.
       return tx;
     },
   };

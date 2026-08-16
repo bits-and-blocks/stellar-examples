@@ -12,20 +12,26 @@ import { AccountBar } from "@/components/AccountBar";
 import { ActionButton } from "@/components/ActionButton";
 import { ActivityLog } from "@/components/ActivityLog";
 import { Card } from "@/components/Card";
-import { ContributionList } from "@/components/ContributionList";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { CopyButton } from "@/components/CopyButton";
 import { Footer } from "@/components/Footer";
 import { ResultPanel } from "@/components/ResultPanel";
+import { SentList } from "@/components/SentList";
+import { Switch } from "@/components/Switch";
 import { ExplorerLinks } from "@/components/ExplorerLinks";
+import { FaucetHelp } from "@/components/FaucetHelp";
 import {
   CheckIcon,
   ExternalIcon,
   MailIcon,
+  RefreshIcon,
   SparkIcon,
   SpinnerIcon,
-  WalletIcon,
 } from "@/components/icons";
 import {
   POOL_ADDRESS,
+  SIGNING_CHECK_PAYEE,
+  SIGNING_CHECK_PAYEE_NAME,
   USDC_CODE,
   USDC_SAC_ID,
   isContractAddress,
@@ -34,11 +40,12 @@ import {
   addTrustline,
   contribute,
   getUsdcBalance,
+  removeTrustline,
 } from "@/lib/stellar/contribute";
 import {
   fundWithFriendbot,
   getXlmBalance,
-  hasSelfPayment,
+  hasNativePaymentTo,
   horizon,
 } from "@/lib/stellar/horizon";
 import { NETWORK_PASSPHRASE, explorerAccountUrl } from "@/lib/stellar/network";
@@ -48,15 +55,15 @@ import {
   useActivityLog,
   type LogEntry,
 } from "@/lib/ui/activity-log";
-import { recordContribution, useContributions } from "@/lib/ui/contributions";
+import { recordSent, useSent } from "@/lib/ui/sent";
 import { recordTrustlineTx, useTrustlineTx } from "@/lib/ui/trustline";
 import { ActionError, useActions } from "@/lib/ui/use-actions";
 import { useSession } from "@/lib/wallet/session";
 
 export default function Home() {
-  // The one place the page learns whose wallet it is working with. Which of
-  // the two implementations is behind this is settled at build time, and
-  // nothing below asks.
+  // The one place the page learns whose wallet it is working with. Every
+  // Privy call lives behind this, so nothing below imports the SDK or knows
+  // that Privy is what answered.
   const session = useSession();
   const { ready, connected, address, signer } = session;
 
@@ -69,13 +76,19 @@ export default function Home() {
   // as the address it was proven for, like the balances above, so a switch of
   // wallet cannot leave the previous one's tick behind.
   const [signedFor, setSignedFor] = useState<string | null>(null);
+  /** What step 3 sends, kept apart from step 6's amount: they are different
+   *  assets going to different places. */
+  const [signAmount, setSignAmount] = useState("1");
   const [amount, setAmount] = useState("1");
+  /** Whether the "this destroys your balance" dialog is up. */
+  const [confirmSwitchOff, setConfirmSwitchOff] = useState(false);
 
   // Survives a reload, like the contributions below.
   const log = useActivityLog();
 
   // Survive a reload, unlike everything else on this page.
-  const contributions = useContributions(address);
+  const signingChecks = useSent("signing", address);
+  const contributions = useSent("contributions", address);
   const trustlineTx = useTrustlineTx(address);
 
   const note = useCallback(
@@ -127,12 +140,12 @@ export default function Home() {
     };
   }, [address]);
 
-  // The signing check leaves a self-payment behind, so the step can be ticked
-  // from the chain on a fresh load the same way the balance-backed steps are.
+  // The signing check leaves a payment behind, so the step can be ticked from
+  // the chain on a fresh load the same way the balance-backed steps are.
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
-    hasSelfPayment(address).then(
+    hasNativePaymentTo(address, SIGNING_CHECK_PAYEE).then(
       (found) => {
         if (!cancelled && found) setSignedFor(address);
       },
@@ -146,17 +159,13 @@ export default function Home() {
     };
   }, [address]);
 
-  // The signed-out card. Privy opens its email modal and returns immediately;
-  // the Kit resolves once a wallet is connected, or throws if the picker was
-  // closed or the wallet is on the wrong network. Only the failure has
-  // anything to say, so only the failure is rendered.
+  // The signed-out card. Privy opens its email modal and returns immediately
+  // rather than when somebody has finished with it, so there is nothing to
+  // report on success — the page changes by itself when the session does.
   const onConnect = () => actions.run("connect", () => session.connect());
 
   const onCreateWallet = () =>
     actions.run("wallet", async () => {
-      if (!session.createWallet) {
-        throw new ActionError("This wallet mode has no wallet to create.");
-      }
       await session.createWallet();
       return { message: "Your Stellar wallet is ready." };
     });
@@ -188,6 +197,19 @@ export default function Home() {
       if (!address || !signer) {
         throw new Error("You do not have a wallet address yet.");
       }
+
+      // Caught here rather than left to the builder, which rejects a bad
+      // amount with "payment builder: amount argument is invalid" — true, and
+      // no help at all to someone who typed a comma. Seven decimal places is
+      // all XLM has, the same as the asset in step 6.
+      const value = signAmount.trim();
+      if (!/^\d+(\.\d{1,7})?$/.test(value) || Number(value) <= 0) {
+        throw new ActionError(
+          `"${signAmount}" is not an amount of XLM you can send.`,
+          "Use a number greater than zero, with a dot for the decimal point and at most 7 places after it.",
+        );
+      }
+
       const account = await horizon.loadAccount(address);
       const tx = new TransactionBuilder(account, {
         fee: BASE_FEE,
@@ -195,38 +217,77 @@ export default function Home() {
       })
         .addOperation(
           Operation.payment({
-            destination: address,
+            destination: SIGNING_CHECK_PAYEE,
             asset: Asset.native(),
-            amount: "1",
+            amount: value,
           }),
         )
         .setTimeout(180)
         .build();
 
-      // The signed transaction, which the Kit builds anew rather than handing
-      // back the one it was given.
+      // The signed transaction. Privy attaches the signature to the object it
+      // was given, so this happens to be `tx` — but the interface does not
+      // promise that, and submitting the return value is the habit that keeps
+      // working if the signer is ever swapped.
       const signed = await signer.signTransaction(tx);
       const result = await horizon.submitTransaction(signed);
       setSignedFor(address);
+      recordSent("signing", address, {
+        hash: result.hash,
+        amount: value,
+        at: Date.now(),
+      });
       await refresh(address);
+      // Said for the activity log's sake. Under the step it is the row that
+      // arrives in the list that confirms this, as in step 6.
       return {
-        message: `Signed and accepted in ledger ${result.ledger}.`,
+        message: `Sent ${value} XLM to ${SIGNING_CHECK_PAYEE_NAME}, signed and accepted in ledger ${result.ledger}.`,
         tx: result.hash,
       };
     });
 
-  const onAddTrustline = () =>
+  // One switch, so one action: which way it goes is read off the trustline the
+  // network reports, never off what the switch was showing when it was pressed.
+  const runToggleTrustline = (next: boolean) =>
     actions.run("trustline", async () => {
       if (!address || !signer) {
         throw new Error("You do not have a wallet address yet.");
       }
+
+      if (!next) {
+        // A balance still held goes back to the issuer in the same
+        // transaction, which is the only way the protocol will let the
+        // trustline go. Nobody reaches here holding one without having been
+        // asked first — see the dialog below.
+        const { hash, burned } = await removeTrustline(signer);
+        recordTrustlineTx(address, hash);
+        await refresh(address);
+        return {
+          message: burned
+            ? `${USDC_CODE} is switched off. The ${burned} ${USDC_CODE} you held went back to the issuer and is gone, and the 0.5 XLM it set aside is back in your balance.`
+            : `${USDC_CODE} is switched off and the 0.5 XLM it set aside is back in your balance.`,
+          tx: hash,
+        };
+      }
+
       const hash = await addTrustline(signer);
       recordTrustlineTx(address, hash);
       await refresh(address);
       // The message still reaches the activity log. What it does not do is
-      // appear under the step, where the button already says this.
+      // appear under the step, where the switch already says this.
       return { message: `Your wallet can now hold ${USDC_CODE}.`, tx: hash };
     });
+
+  // Switching off is the one thing on this page that destroys something, and
+  // only when there is a balance to destroy. That case, and only that case,
+  // stops to ask; every other flick of the switch goes straight through.
+  const onToggleTrustline = (next: boolean) => {
+    if (!next && hasUsdc) {
+      setConfirmSwitchOff(true);
+      return;
+    }
+    runToggleTrustline(next);
+  };
 
   const onRefreshBalances = (id: string) => () =>
     actions.run(id, async () => {
@@ -260,7 +321,7 @@ export default function Home() {
       // here, so both readings are offered rather than the wrong one asserted.
       if (!(Number(held) > 0)) {
         return {
-          message: `No ${USDC_CODE} has reached your wallet yet. If you have just claimed some, give it a few seconds and check again — the faucet takes a moment to send it. If you have not, open the Circle faucet above, choose Stellar, and paste the address from the bar at the top.`,
+          message: `No ${USDC_CODE} has reached your wallet yet. If you have just claimed some, give it a few seconds and refresh your balances from the bar at the top — the faucet takes a moment to send it. If you have not, open the Circle faucet above, choose Stellar, and paste the address from the bar at the top.`,
           tone: "info" as const,
         };
       }
@@ -276,7 +337,7 @@ export default function Home() {
 
       if (before !== null) {
         return {
-          message: `Your wallet holds ${held} ${USDC_CODE}, and nothing new has arrived since the last check. If you have just claimed some, give it a few seconds and check again.`,
+          message: `Your wallet holds ${held} ${USDC_CODE}, and nothing new has arrived since this page last read it. If you have just claimed some, give it a few seconds and refresh your balances from the bar at the top.`,
           tone: "info" as const,
         };
       }
@@ -306,7 +367,11 @@ export default function Home() {
         }
         const value = options?.amountOverride ?? amount;
         const hash = await contribute(signer, value, options);
-        recordContribution(address, { hash, amount: value, at: Date.now() });
+        recordSent("contributions", address, {
+          hash,
+          amount: value,
+          at: Date.now(),
+        });
         await refresh(address);
         return { message: `Sent ${value} ${USDC_CODE} to the pool.`, tx: hash };
       });
@@ -335,9 +400,14 @@ export default function Home() {
   const hasUsdc = usdc !== null && Number(usdc) > 0;
   const busy = actions.busy;
 
-  // The two modes are the same app from step 2 onwards. They differ in how you
-  // arrive: Privy makes you a wallet, and a browser extension brings its own.
-  const kit = session.mode === "wallets-kit";
+  // The faucet check is a one-off. Once it has answered — whether or not
+  // anything had arrived — the bar's refresh at the top does the same job from
+  // anywhere on the page, so the button retires rather than standing there as a
+  // second way to do one thing. A run that failed answered nothing, so it keeps
+  // the button.
+  const faucetStatus = actions.get("faucet-refresh").status;
+  const showFaucetCheck =
+    !hasUsdc && faucetStatus !== "success" && faucetStatus !== "info";
 
   // The balance-derived locks below are read off something that is not in hand
   // on the first render. Stating a reason from what has not been read yet would
@@ -351,9 +421,7 @@ export default function Home() {
   // to a step that is itself locked.
   const needsWallet =
     address === null
-      ? kit
-        ? "Connect a wallet in step 1 first. Every step below acts on it."
-        : "Create your wallet in step 1 first. Every step below acts on it."
+      ? "Create your wallet in step 1 first. Every step below acts on it."
       : undefined;
 
   // Nothing can touch a wallet the network has never heard of: signing needs a
@@ -363,7 +431,7 @@ export default function Home() {
   const needsFunding =
     needsWallet ??
     (known && xlm === null
-      ? "Get some test XLM in step 2 first. Until something funds it your wallet does not exist on the network, and it cannot pay a fee or set anything aside."
+      ? "Get some faucet XLM in step 2 first. Until something funds it your wallet does not exist on the network, and it cannot pay a fee or set anything aside."
       : undefined);
 
   // Everything from the faucet onwards moves USDC, and a wallet that has not
@@ -384,15 +452,11 @@ export default function Home() {
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             className="hero"
           >
-            <h1>
-              {kit
-                ? "A funded testnet wallet, from the one you already have"
-                : "A Stellar wallet, with nothing to write down"}
-            </h1>
+            <h1>A Stellar wallet, with nothing to write down</h1>
             <p>
-              {kit
-                ? "Connect Freighter or xBull and you get an account you can actually use here: funded, able to hold USDC, and ready to send its first payment. Your key stays in the extension."
-                : "Sign in with your email and you get a wallet you can actually use: funded, able to hold USDC, and ready to send its first payment. No seed phrase, no browser extension."}
+              Sign in with your email and you get a wallet you can actually
+              use: funded, able to hold USDC, and ready to send its first
+              payment. No seed phrase, no browser extension.
             </p>
             <div className="badge-row">
               <span className="badge badge-accent">Testnet only</span>
@@ -402,12 +466,8 @@ export default function Home() {
           </motion.header>
 
           <Card
-            title={kit ? "Connect your wallet" : "Sign in"}
-            note={
-              kit
-                ? "Every transaction below is built here and approved by you in the extension. This page never sees your key."
-                : "Privy emails you a code, then creates and keeps the wallet safe for you."
-            }
+            title="Sign in"
+            note="Privy emails you a code, then creates and keeps the wallet safe for you."
           >
             <div className="row">
               <ActionButton
@@ -415,14 +475,13 @@ export default function Home() {
                 onClick={onConnect}
                 variant="primary"
                 size="lg"
-                pending={kit ? "Waiting for your wallet" : undefined}
-                icon={kit ? <WalletIcon /> : <MailIcon />}
+                icon={<MailIcon />}
               >
-                {kit ? "Connect a wallet" : "Continue with email"}
+                Continue with email
               </ActionButton>
             </div>
-            {/* A picker that was closed, or a wallet on the wrong network.
-                Success needs no sentence: the page becomes the walkthrough. */}
+            {/* Only a login that went wrong has anything to say. Success needs
+                no sentence: the page becomes the walkthrough. */}
             <ResultPanel
               result={
                 actions.get("connect").result?.ok
@@ -463,38 +522,53 @@ export default function Home() {
 
         <Card
           step={1}
-          title={kit ? "Your connected wallet" : "Create your Stellar wallet"}
-          note={
-            kit
-              ? `Connected with ${session.label}. The account below is the one it is currently exposing, and every step after this one acts on it.`
-              : "This makes a wallet tied to your account. Privy holds the key, so there is nothing for you to back up."
-          }
+          title="Create your Stellar wallet"
+          note="This makes a wallet tied to your account. Privy holds the key, so there is nothing for you to back up."
           done={address !== null}
         >
-          <div className="row">
-            {/* Nothing to create in Kit mode: the wallet arrived with an
-                account already. The step stays in the list rather than
-                renumbering the other six, and states what it has instead of
-                offering a button that would have nothing to do. */}
-            <ActionButton
-              status={actions.get("wallet").status}
-              onClick={onCreateWallet}
-              disabled={
-                busy || address !== null || session.createWallet === null
-              }
-              variant={address === null ? "primary" : "done"}
-              pending="Creating"
-              icon={address === null ? <SparkIcon /> : <CheckIcon size={13} />}
-            >
-              {address === null
-                ? "Create wallet"
-                : kit
-                  ? `Connected with ${session.label}`
-                  : "Your wallet is ready"}
-            </ActionButton>
-          </div>
-          {/* Success is the button's to state, and the address it used to
-              report is in the bar at the top the moment it exists. */}
+          {/* Until there is a wallet the step is a button. After, it is one
+              panel rather than two: a button that could no longer be pressed,
+              sitting above a box holding the address, said one thing in two
+              places. */}
+          {address === null ? (
+            <div className="row">
+              <ActionButton
+                status={actions.get("wallet").status}
+                onClick={onCreateWallet}
+                disabled={busy}
+                variant="primary"
+                pending="Creating"
+                icon={<SparkIcon />}
+              >
+                Create wallet
+              </ActionButton>
+            </div>
+          ) : (
+            <div className="wallet-ready">
+              <span className="wallet-ready-state">
+                <CheckIcon size={13} />
+                Your wallet is ready
+              </span>
+              {/* The bar at the top carries this too, shortened. Here it is in
+                  full, beside the step that produced it, and copyable, since
+                  the faucet in step 5 is going to ask for it. */}
+              <span className="wallet-ready-address">
+                <span className="mono">{address}</span>
+                <CopyButton value={address} size={13} />
+                <a
+                  href={explorerAccountUrl(address)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="link-icon"
+                  aria-label="View account on the explorer"
+                  title="View account on the explorer"
+                >
+                  <ExternalIcon size={13} />
+                </a>
+              </span>
+            </div>
+          )}
+          {/* Success is the panel's to state. */}
           <ResultPanel
             result={
               actions.get("wallet").result?.ok
@@ -506,8 +580,8 @@ export default function Home() {
 
         <Card
           step={2}
-          title="Get some test XLM"
-          note="XLM pays the network fees. Friendbot hands it out free on testnet."
+          title="Get some faucet XLM"
+          note="XLM pays the network fees. Friendbot is the testnet faucet, and it hands it out free."
           done={xlm !== null}
           locked={needsWallet}
         >
@@ -519,7 +593,7 @@ export default function Home() {
               variant={xlm === null ? "primary" : "default"}
               pending="Asking Friendbot"
             >
-              {xlm === null ? "Get test XLM" : "Ask Friendbot again"}
+              {xlm === null ? "Get faucet XLM" : "Ask Friendbot again"}
             </ActionButton>
           </div>
           <ResultPanel result={actions.get("fund").result} />
@@ -528,50 +602,91 @@ export default function Home() {
         <Card
           step={3}
           title="Check that signing works"
-          note="Send 1 XLM to yourself. Nothing leaves your wallet, and it proves your wallet can sign a real transaction."
+          note={`Send some XLM to ${SIGNING_CHECK_PAYEE_NAME}, who wrote this example. It is testnet XLM, so it is worth nothing real, and it proves your wallet can sign a transaction and get it accepted.`}
           done={signed}
           locked={needsFunding}
         >
+          {/* Where it goes, before the button that sends it, as in step 6. */}
+          <dl className="kv">
+            <dt>Goes to</dt>
+            <dd className="mono">
+              {SIGNING_CHECK_PAYEE}{" "}
+              <span className="aside">({SIGNING_CHECK_PAYEE_NAME})</span>
+            </dd>
+          </dl>
+
+          {/* An amount and the button that sends it, laid out as step 6 lays
+              out a contribution: the same shape for the same kind of act. */}
           <div className="row">
+            <label className="field">
+              <input
+                value={signAmount}
+                onChange={(event) => setSignAmount(event.target.value)}
+                disabled={xlm === null}
+                inputMode="decimal"
+                aria-label={`Amount of XLM to send to ${SIGNING_CHECK_PAYEE_NAME}`}
+              />
+              <span className="field-suffix">XLM</span>
+            </label>
             <ActionButton
               status={actions.get("sign").status}
               onClick={onSendPayment}
               disabled={busy || xlm === null}
+              variant="primary"
               pending="Sending"
             >
-              Send 1 XLM to myself
+              Send to {SIGNING_CHECK_PAYEE_NAME}
             </ActionButton>
           </div>
-          <ResultPanel result={actions.get("sign").result} />
+          {/* Success is the arriving row's to state, as in step 6. Only a
+              failure has anything left to say here. */}
+          <ResultPanel
+            result={
+              actions.get("sign").result?.ok
+                ? undefined
+                : actions.get("sign").result
+            }
+          />
+
+          <SentList
+            entries={signingChecks}
+            code="XLM"
+            title="Your last signing check"
+            destination={SIGNING_CHECK_PAYEE_NAME}
+            latestOnly
+          />
         </Card>
 
         <Card
           step={4}
           title={`Switch on ${USDC_CODE}`}
-          note={`Stellar makes you opt in to a token before your wallet can hold it. It sets aside 0.5 XLM, which you get back if you ever opt out. Skip this and every contribution below will fail.`}
+          note={`Stellar makes you opt in to a token before your wallet can hold it. It sets aside 0.5 XLM, which you get back if you switch it off again. Skip this and every contribution below will fail.`}
           done={hasTrustline}
           locked={needsFunding}
         >
           <div className="row">
-            <ActionButton
-              status={actions.get("trustline").status}
-              onClick={onAddTrustline}
-              disabled={busy || hasTrustline || xlm === null}
-              variant={hasTrustline ? "done" : "primary"}
-              pending="Switching on"
-              icon={hasTrustline ? <CheckIcon size={13} /> : undefined}
-            >
-              {hasTrustline
-                ? `Your wallet can now hold ${USDC_CODE}`
-                : `Switch on ${USDC_CODE}`}
-            </ActionButton>
-            {/* Kept beside the button rather than inside a result that
+            {/* It switches both ways because the opt-in does: the same
+                operation with a limit of zero gives the 0.5 XLM back. Holding
+                a balance does not take the choice away, it just makes it cost
+                something — see the warning below. */}
+            <Switch
+              checked={hasTrustline}
+              onChange={onToggleTrustline}
+              disabled={busy || xlm === null}
+              pending={actions.get("trustline").status === "pending"}
+              label={
+                hasTrustline
+                  ? `Your wallet can hold ${USDC_CODE}`
+                  : `Switch on ${USDC_CODE}`
+              }
+            />
+            {/* Kept beside the switch rather than inside a result that
                 expires, so the opt-in stays reachable after a reload. */}
             {hasTrustline && trustlineTx && (
-              <ExplorerLinks hash={trustlineTx} compact size="md" />
+              <ExplorerLinks hash={trustlineTx} />
             )}
           </div>
-          {/* Success is the button's to state. Only a failure has anything
+          {/* Success is the switch's to state. Only a failure has anything
               left to say here. */}
           <ResultPanel
             result={
@@ -584,8 +699,12 @@ export default function Home() {
 
         <Card
           step={5}
-          title={`Claim some test ${USDC_CODE}`}
-          note="Circle gives out free test tokens. Pick Stellar, paste your address from the bar at the top, then come back and refresh."
+          title={`Claim some faucet ${USDC_CODE}`}
+          // Against the title rather than down among the controls: it is about
+          // the step, and it is an offer to be taken once rather than a fourth
+          // thing to weigh up on every pass.
+          titleAside={<FaucetHelp code={USDC_CODE} />}
+          note="Circle's faucet gives out free test tokens. Pick Stellar, paste your address from the bar at the top, then come back and check."
           done={hasUsdc}
           locked={needsTrustline}
         >
@@ -600,15 +719,30 @@ export default function Home() {
               Open the Circle faucet
               <ExternalIcon />
             </a>
-            <ActionButton
-              status={actions.get("faucet-refresh").status}
-              onClick={onCheckFaucet}
-              disabled={busy || !hasTrustline}
-              pending="Checking"
-            >
-              I claimed it, check my balance
-            </ActionButton>
+            {/* Only until it has been pressed. It is here to teach that a
+                claim has to arrive before the page knows about it; once that
+                has landed, the bar's refresh does the same job from anywhere
+                on the page, and two buttons for one thing is one too many. */}
+            {showFaucetCheck && (
+              <ActionButton
+                status={actions.get("faucet-refresh").status}
+                onClick={onCheckFaucet}
+                disabled={busy || !hasTrustline}
+                pending="Checking"
+              >
+                I claimed it, check my balance
+              </ActionButton>
+            )}
           </div>
+          {/* The result clears itself after a few seconds, and the button that
+              produced it is gone, so where to look next is stated in something
+              that stays. */}
+          {!showFaucetCheck && !hasUsdc && (
+            <p className="hint">
+              <RefreshIcon size={13} />
+              Nothing yet? Refresh your balances from the bar at the top.
+            </p>
+          )}
           <ResultPanel result={actions.get("faucet-refresh").result} />
         </Card>
 
@@ -669,7 +803,12 @@ export default function Home() {
             }
           />
 
-          <ContributionList entries={contributions} code={USDC_CODE} />
+          <SentList
+            entries={contributions}
+            code={USDC_CODE}
+            title="Your contributions"
+            destination="the pool"
+          />
         </Card>
 
         <Card
@@ -707,6 +846,33 @@ export default function Home() {
 
         <ActivityLog entries={log} onClear={clearActivity} />
       </div>
+
+      {/* Outside the steps: a dialog rendered inside a card would sit in a
+          region this page makes inert when a step is locked. */}
+      <ConfirmDialog
+        open={confirmSwitchOff}
+        title={`Switch ${USDC_CODE} off and give up your balance?`}
+        confirmLabel={`Switch off and give up ${usdc ?? "0"} ${USDC_CODE}`}
+        cancelLabel="Keep it"
+        onCancel={() => setConfirmSwitchOff(false)}
+        onConfirm={() => {
+          setConfirmSwitchOff(false);
+          runToggleTrustline(false);
+        }}
+      >
+        <p>
+          Your wallet holds {usdc} {USDC_CODE}. A trustline cannot be dropped
+          while it holds anything, so switching off sends that balance back to
+          the issuer in the same transaction, which destroys it. There is no
+          undoing that.
+        </p>
+        <p>
+          You get the 0.5 XLM back either way, and you can switch {USDC_CODE}{" "}
+          on again and claim more from the faucet in step 5. To keep what you
+          hold, cancel and send it in step 6 first.
+        </p>
+      </ConfirmDialog>
+
       <Footer />
     </>
   );

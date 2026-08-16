@@ -10,12 +10,12 @@ import { NETWORK_PASSPHRASE } from "@/lib/stellar/network";
 import { type Signer, SigningError } from "./signer";
 
 /**
- * The other side of the `Signer` interface: a wallet the user already has.
+ * The whole of this app's wallet integration: a wallet the user already has.
  *
  * Nothing here holds a key or sees one. The transaction goes out as XDR, the
  * user reads it in Freighter or xBull and approves it, and signed XDR comes
- * back. Compared with the Privy implementation this file does no cryptography
- * at all — it delegates, then checks that what came back is what it asked for.
+ * back. This file does no cryptography at all — it delegates, then checks that
+ * what came back is what it asked for.
  *
  * Only the Freighter and xBull modules are registered. The Kit ships many
  * more, and `defaultModules()` would enable them all, but WalletConnect
@@ -78,9 +78,9 @@ export type KitConnection = {
 /**
  * Opens the Kit's own wallet picker and returns what the user connected.
  *
- * This is the whole of the "log in" step in Kit mode. There is no account to
- * create and nothing to fund a key with — the wallet exists already, and the
- * user is choosing which of its accounts to expose.
+ * This is the whole of the "log in" step. There is no account to create and
+ * nothing to fund a key with — the wallet exists already, and the user is
+ * choosing which of its accounts to expose.
  */
 export async function connectKit(): Promise<KitConnection> {
   const swk = await kit();

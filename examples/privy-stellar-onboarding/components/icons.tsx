@@ -31,6 +31,16 @@ export function AlertIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** There is more to see about this step, but only if you want it. */
+export function InfoIcon({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 16v-5M12 7.5h.01" />
+    </svg>
+  );
+}
+
 /** Nothing changed. A minus rather than a tick, which would overclaim. */
 export function NoChangeIcon({ size = 16 }: IconProps) {
   return (
@@ -103,16 +113,6 @@ export function MailIcon({ size = 16 }: IconProps) {
     <svg {...base(size)}>
       <rect x="2" y="4" width="20" height="16" rx="2" />
       <path d="m2 7 10 6 10-6" />
-    </svg>
-  );
-}
-
-/** A wallet you already have, as opposed to one this page makes for you. */
-export function WalletIcon({ size = 16 }: IconProps) {
-  return (
-    <svg {...base(size)}>
-      <path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <path d="M16 12h2" />
     </svg>
   );
 }

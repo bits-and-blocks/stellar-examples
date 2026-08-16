@@ -14,8 +14,8 @@ import { type Session, SessionContext } from "./session";
  * The Privy session: an email address, an embedded wallet Privy custodies, and
  * a key that signs hashes on request.
  *
- * Mounted only in `privy` mode, so nothing here runs — and no Privy app ID is
- * needed — in a Wallets Kit build.
+ * Everything Privy-shaped in this app is here and in `lib/signing/privy.ts`.
+ * Above this line the app sees a `Session`; below it, a `Signer`.
  */
 export function PrivySessionProvider({
   appId,
@@ -54,7 +54,6 @@ function CurrentSession({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<Session>(
     () => ({
-      mode: "privy",
       ready,
       connected: authenticated,
       address,

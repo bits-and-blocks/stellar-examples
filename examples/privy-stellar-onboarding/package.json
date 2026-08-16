@@ -12,7 +12,6 @@
     "verify:contribution": "tsx scripts/verify-contribution.mts"
   },
   "dependencies": {
-    "@creit.tech/stellar-wallets-kit": "^2.5.0",
     "@privy-io/react-auth": "3.37.1",
     "@stellar/stellar-sdk": "16.2.0",
     "framer-motion": "^13.1.0",
