@@ -39,7 +39,7 @@ jobs:
       # influence the build, a green job would only prove something about this
       # runner. Everything that compiles happens inside the pinned image.
       - name: Show the pin
-        run: cat build.env
+        run: cat build.conf
 
       - name: Rebuild from source in the pinned container
         run: bash scripts/build.sh
@@ -49,8 +49,19 @@ jobs:
           npm install --no-audit --no-fund
           node scripts/check-deployed-hash.mjs
 
+      # The general path: no knowledge of this repo, everything read from the
+      # contract's own SEP-58 metadata. The step above proves our source matches
+      # our deployment; this one proves a stranger could establish the same
+      # thing from the chain alone.
+      - name: SEP-58 verify from recorded metadata
+        run: bash scripts/verify.sh
+
+      # A verifier is only worth its refusals. These run against contracts
+      # deployed on testnet on purpose to be defective.
+      - name: Assert the verifier refuses the negative fixtures
+        run: bash scripts/check-negative-fixtures.sh
+
       # Behaviour, not provenance — a reproducible build of a broken contract
-      # still reproduces. Runs after the assertion above so the headline claim
-      # is the first thing to go red.
+      # still reproduces. Runs last so the headline claims fail first.
       - name: Contract unit tests
         run: bash scripts/test.sh

@@ -1,15 +1,42 @@
 # shellcheck shell=bash
-# Sourced by build.sh and deploy.sh. Not executable on its own.
+# Sourced by the other scripts. Not executable on its own.
 
 set -euo pipefail
 
 EXAMPLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=../build.env
-. "$EXAMPLE_DIR/build.env"
+# shellcheck source=../build.conf
+. "$EXAMPLE_DIR/build.conf"
 
-# Docker Desktop on Windows wants a Windows-style host path for -v, while MSYS
-# would otherwise rewrite the container-side "/work" into "C:\work". Forward
-# slashes are accepted by Docker on every platform.
+# Fail early and legibly on a machine that is missing something, rather than
+# part-way through with whatever error the first missing tool happens to emit.
+# The scripts deliberately stay within bash 3.2 (what macOS still ships) so this
+# check is about the environment, not the shell.
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 && return 0
+  echo "error: '$1' is required but is not on PATH" >&2
+  [ -n "${2:-}" ] && echo "  $2" >&2
+  exit 1
+}
+
+require_cmd docker "Install Docker — every build in this example runs in a container."
+require_cmd curl
+require_cmd tar
+
+if ! docker info >/dev/null 2>&1; then
+  echo "error: Docker is installed but its daemon is not reachable" >&2
+  echo "  Start Docker Desktop (or dockerd) and try again." >&2
+  exit 1
+fi
+
+# On Windows these scripts land in one of two completely different shells:
+# Git Bash if you run them directly, or WSL if you run them through `npm run`
+# from PowerShell, because that is what `bash` resolves to there. They differ in
+# ways that break naive assumptions, so both are handled explicitly.
+#
+# Paths: Git Bash needs a Windows-style path for -v (and MSYS would otherwise
+# rewrite container-side paths like "/source" into "C:\source"). WSL paths such
+# as /mnt/c/... are understood by Docker Desktop as-is, as is a native Linux
+# path, so everything else passes through untouched.
 host_path() {
   if command -v cygpath >/dev/null 2>&1; then
     cygpath -m "$1" # Windows path, forward slashes
@@ -18,42 +45,161 @@ host_path() {
   fi
 }
 
-# Every container invocation in this example goes through here, so the pin and
-# the working directory can never drift between build and deploy.
+# Interpreter: WSL has the Windows Node install on PATH as node.exe, with no
+# bare `node`, so assuming `node` works is exactly the bug that makes
+# `npm run verify:sep58` fail from PowerShell while working from Git Bash.
+resolve_node() {
+  if [ -n "${npm_node_execpath:-}" ] && [ -x "${npm_node_execpath:-}" ]; then
+    printf '%s' "$npm_node_execpath"
+    return 0
+  fi
+  local candidate
+  for candidate in node node.exe; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! NODE="$(resolve_node)"; then
+  echo "error: could not find node (tried \$npm_node_execpath, node, node.exe)" >&2
+  echo "Install Node 20+ and make sure it is on PATH in this shell." >&2
+  exit 1
+fi
+
+# Ownership, shared by every container run below.
 #
-# -w /work matters for reproducibility as much as the digest does: cargo records
-# absolute paths, so building at /work rather than at whatever the host happens
-# to call this directory is what stops my checkout path from leaking into the
-# wasm and changing its hash.
+# The image runs as its own `stellar` user (uid 1000, home /stellar). On any
+# host where the checkout is owned by a different uid — a GitHub runner is uid
+# 1001, and plenty of Linux boxes are not 1000 either — that user cannot write
+# into a bind mount, so tar cannot extract, cargo cannot create target/ and
+# `contract fetch` cannot save a file. Docker Desktop on macOS and Windows
+# papers over this; Linux does not, which is why it shows up in CI first.
 #
-# --user is about the bind mount, not the build. The image runs as its own
-# `stellar` user (uid 1000, home /stellar), so on any host where the checkout is
-# owned by some other uid — a GitHub runner is uid 1001, and plenty of Linux
-# boxes are not 1000 either — cargo cannot create its target directory and dies
-# with "Permission denied". Docker Desktop on macOS and Windows papers over
-# that; Linux does not, which is why it shows up in CI first.
+# Running as the caller's uid fixes the mounts and costs us everything the
+# image expected to write under /stellar and /config, so each of those moves to
+# /tmp, which is world-writable in the image and dies with the container.
+# RUSTUP_HOME is left alone: it lives at /usr/local/rustup, is world-readable,
+# and is only ever read.
 #
-# Running as the caller's uid then costs us everything the image expected to
-# write under /stellar, so each of those moves to /tmp: the crate registry
-# (CARGO_HOME), anything reaching for ~ (HOME), and the CLI's own config and
-# data dirs (deploy.sh has it generate a key). /tmp is world-writable in the
-# image and dies with the container, so nothing escapes into the host except
-# through the mount.
-#
-# None of it reaches the compiler. The stellar CLI derives its
-# --remap-path-prefix from CARGO_HOME, so moving the registry moves the prefix
-# with it and dependency paths still remap to the same relative strings — the
-# wasm is unchanged, which is precisely what the hash assertion re-proves.
+# None of this is part of the SEP-58 recipe, and none of it reaches the
+# compiler. The one that could is CARGO_HOME, because the stellar CLI derives
+# its --remap-path-prefix from it — but moving the registry moves the prefix
+# with it, so dependency paths still remap to the same relative strings and the
+# Wasm is unchanged. Both halves of this example re-prove that on every run:
+# build.sh and verify.sh use these same flags, and their output is compared
+# against bytes on chain that were built without them.
+AS_CALLING_USER=(
+  --user "$(id -u):$(id -g)"
+  -e CARGO_HOME=/tmp/cargo
+  -e HOME=/tmp
+  -e STELLAR_CONFIG_HOME=/tmp/stellar/config
+  -e STELLAR_DATA_HOME=/tmp/stellar/data
+)
+
+# Utility container runs: the example directory at /work. Used for tasks that
+# are not the contract build itself (archiving, key handling).
 run_pinned() {
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
   docker run --rm \
     --platform "$BUILD_PLATFORM" \
-    --user "$(id -u):$(id -g)" \
-    -e CARGO_HOME=/tmp/cargo \
-    -e HOME=/tmp \
-    -e STELLAR_CONFIG_HOME=/tmp/stellar/config \
-    -e STELLAR_DATA_HOME=/tmp/stellar/data \
+    "${AS_CALLING_USER[@]}" \
     -v "$(host_path "$EXAMPLE_DIR"):/work" \
     -w /work \
     "$@"
+}
+
+# The toolchain the image ships, e.g. "1.97.1-x86_64-unknown-linux-gnu".
+#
+# SEP-58 §"Why no explicit rust version field": a `rust-toolchain.toml` inside
+# the source would otherwise make rustup silently swap toolchains mid-build,
+# defeating the image pin. Reading the image's own default and forcing it back
+# in via RUSTUP_TOOLCHAIN closes that hole for *any* source, including sources
+# we did not write — which matters once verify.sh builds strangers' contracts.
+image_toolchain() {
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+  docker run --rm --platform "$BUILD_PLATFORM" --entrypoint rustup "$1" default \
+    | cut -d' ' -f1
+}
+
+# The SEP-58 build invocation, reconstructed from recorded fields.
+#
+#   <entry point> <bldarg...> <bldopt...>
+#
+# and per the SEP the source is mounted at /source, which is also the image's
+# WORKDIR, so relative paths resolve against the source root. We record no
+# `bldarg`, so a verifier applies the spec's default of `contract` then `build`
+# — passed explicitly here so producer and verifier run the identical command.
+#
+#   $1  source directory on the host (the archive's single top-level directory)
+#   $2  image reference
+#   $3  RUSTUP_TOOLCHAIN value
+#   $4+ arguments after the entry point
+run_sep58_build() {
+  local source_dir="$1" image="$2" toolchain="$3"
+  shift 3
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+  docker run --rm \
+    --platform "$BUILD_PLATFORM" \
+    "${AS_CALLING_USER[@]}" \
+    -v "$(host_path "$source_dir"):/source" \
+    -e "RUSTUP_TOOLCHAIN=$toolchain" \
+    "$image" \
+    "$@"
+}
+
+# sha256sum is present in Git Bash, WSL and on CI; node is the fallback for
+# anywhere it is not (macOS ships shasum instead).
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    "$NODE" -e "
+      const {createHash}=require('crypto'),{readFileSync}=require('fs');
+      process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'));
+    " "$1"
+  fi
+}
+
+# Testnet, pinned in code. Nothing reads these from the environment, so this
+# example cannot be pointed at mainnet by setting a variable.
+RPC_URL="https://soroban-testnet.stellar.org"
+NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+FRIENDBOT_URL="https://friendbot.stellar.org"
+KEY_FILE="$EXAMPLE_DIR/.deployer-secret"
+
+# A throwaway testnet key, generated on first use and gitignored. Nothing of
+# value is ever held by it.
+deployer_secret() {
+  if [ ! -f "$KEY_FILE" ]; then
+    echo "generating a throwaway testnet deployer key -> .deployer-secret" >&2
+    # `keys generate` writes the identity into the container's config dir,
+    # which dies with the container, so read it back out in the same run.
+    run_pinned --entrypoint sh "$BLDIMG" -c \
+      'stellar keys generate --as-secret ci-deployer >/dev/null 2>&1 && stellar keys secret ci-deployer' \
+      | tr -d '[:space:]' > "$KEY_FILE"
+    [ -s "$KEY_FILE" ] || { rm -f "$KEY_FILE"; echo "error: key generation failed" >&2; exit 1; }
+  fi
+  tr -d '[:space:]' < "$KEY_FILE"
+}
+
+# Deploy a Wasm file (path relative to the example directory) and echo the
+# resulting contract id. Used by deploy.sh for the real subject contract and by
+# the negative-fixture script for the deliberately broken ones.
+deploy_wasm() {
+  local rel_wasm="$1" secret public
+  secret="$(deployer_secret)"
+  public="$(run_pinned "$BLDIMG" keys public-key "$secret" | tr -d '[:space:]')"
+
+  echo "deployer: $public" >&2
+  curl -sS "$FRIENDBOT_URL?addr=$public" -o /dev/null || true
+
+  run_pinned \
+    -e "STELLAR_ACCOUNT=$secret" \
+    -e "STELLAR_RPC_URL=$RPC_URL" \
+    -e "STELLAR_NETWORK_PASSPHRASE=$NETWORK_PASSPHRASE" \
+    "$BLDIMG" \
+    contract deploy --wasm "/work/$rel_wasm" --quiet | tr -d '[:space:]'
 }

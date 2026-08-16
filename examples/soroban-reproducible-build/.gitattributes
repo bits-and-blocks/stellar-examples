@@ -3,4 +3,4 @@
 # checking-out machine's core.autocrlf.
 *.sh text eol=lf
 *.mjs text eol=lf
-build.env text eol=lf
+build.conf text eol=lf
