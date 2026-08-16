@@ -35,10 +35,10 @@ The page walks through seven steps and each one tells you what it did:
 | # | Step | What happens |
 | --- | --- | --- |
 | 1 | Create your Stellar wallet | Privy creates an embedded wallet, `chainType: "stellar"` |
-| 2 | Get some test XLM | Friendbot funds the account |
-| 3 | Check that signing works | A no-op payment, to prove the signature is accepted |
-| 4 | Switch on USDC | `changeTrust` — reserves 0.5 XLM, refundable |
-| 5 | Claim some test USDC | Circle's [testnet faucet](https://faucet.circle.com), 20 USDC per 2 hours |
+| 2 | Get some faucet XLM | Friendbot funds the account |
+| 3 | Check that signing works | An XLM payment to a fixed testnet address, to prove the signature is accepted |
+| 4 | Switch on USDC | `changeTrust` — reserves 0.5 XLM; the switch turns it back off (`limit: "0"`), releasing the reserve. A balance still held is burned to the issuer in the same transaction, since the protocol will not drop a trustline that holds anything |
+| 5 | Claim some faucet USDC | Circle's [testnet faucet](https://faucet.circle.com), 20 USDC per 2 hours |
 | 6 | Contribute | `transfer` on the Stellar Asset Contract |
 | 7 | See what a failure looks like | Two deliberate failures, with and without preflight |
 

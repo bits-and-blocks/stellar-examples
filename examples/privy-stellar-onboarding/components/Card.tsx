@@ -8,6 +8,13 @@ type Props = {
   /** Step number in the walkthrough. Left out for cards that are not a step. */
   step?: number;
   title: string;
+  /**
+   * A control belonging to the title rather than to the step, e.g. the way in
+   * to an explanation. Beside the heading, not inside it: the outline a screen
+   * reader builds from the headings should read as the step's name and nothing
+   * else.
+   */
+  titleAside?: ReactNode;
   note?: ReactNode;
   done?: boolean;
   /**
@@ -18,7 +25,15 @@ type Props = {
   children: ReactNode;
 };
 
-export function Card({ step, title, note, done, locked, children }: Props) {
+export function Card({
+  step,
+  title,
+  titleAside,
+  note,
+  done,
+  locked,
+  children,
+}: Props) {
   return (
     <motion.section
       layout
@@ -34,7 +49,10 @@ export function Card({ step, title, note, done, locked, children }: Props) {
           </span>
         )}
         <div style={{ minWidth: 0 }}>
-          <h2 className="card-title">{title}</h2>
+          <div className="card-title-row">
+            <h2 className="card-title">{title}</h2>
+            {titleAside}
+          </div>
           {note && <p className="card-note">{note}</p>}
         </div>
       </header>

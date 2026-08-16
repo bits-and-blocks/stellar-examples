@@ -7,26 +7,17 @@ const icons = {
 } as const;
 
 /**
- * One button per explorer for a given transaction. Two rather than one because
+ * One link per explorer for a given transaction. Two rather than one because
  * they show different things, and because an explorer being down should not
  * leave a hash with nowhere to go.
+ *
+ * Links rather than buttons, and dressed as links: nothing happens on this page
+ * when they are pressed. A pill beside a real control read as a second thing
+ * the step could do, when it is a way out of the page.
  */
-export function ExplorerLinks({
-  hash,
-  compact,
-  /**
-   * "sm" is a pill sitting inside a result line or a list row. "md" is for
-   * links standing on a row of their own, where they line up with the button
-   * beside them rather than floating at half its height.
-   */
-  size = "sm",
-}: {
-  hash: string;
-  compact?: boolean;
-  size?: "sm" | "md";
-}) {
+export function ExplorerLinks({ hash }: { hash: string }) {
   return (
-    <span className="row" style={{ gap: "8px" }}>
+    <span className="explorer-links">
       {EXPLORERS.map((explorer) => {
         const Icon = icons[explorer.id];
         return (
@@ -35,11 +26,17 @@ export function ExplorerLinks({
             href={explorer.txUrl(hash)}
             target="_blank"
             rel="noreferrer"
-            className={`btn ${size === "md" ? "btn-quiet" : "btn-sm"}`}
-            title={`View on ${explorer.name}`}
+            className="explorer-link"
           >
             <Icon />
-            {compact ? explorer.name.replace("Stellar", "").trim() : explorer.name}
+            {/* Underlined on the words only. Carried across the icon as well,
+                the rule ran under a symbol that is not part of the phrase. */}
+            <span>
+              {/* The explorer's name alone read as a label for the row rather
+                  than as somewhere to go. Saying what following it does is the
+                  whole difference. */}
+              View on {explorer.name}
+            </span>
           </a>
         );
       })}

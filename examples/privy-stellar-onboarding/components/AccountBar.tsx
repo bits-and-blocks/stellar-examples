@@ -1,15 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ActionStatus } from "@/lib/ui/use-actions";
-import {
-  CheckIcon,
-  CopyIcon,
-  ExternalIcon,
-  LogoutIcon,
-  RefreshIcon,
-} from "./icons";
+import { CopyButton } from "./CopyButton";
+import { ExternalIcon, LogoutIcon, RefreshIcon } from "./icons";
 
 type Props = {
   /** Who this is: an email address in Privy mode, a wallet's name in Kit mode. */
@@ -159,33 +153,6 @@ function Balance({
         </AnimatePresence>
       )}
     </div>
-  );
-}
-
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1600);
-    return () => clearTimeout(timer);
-  }, [copied]);
-
-  return (
-    <button
-      type="button"
-      aria-label={copied ? "Address copied" : "Copy address"}
-      title={copied ? "Copied" : "Copy address"}
-      onClick={() => {
-        navigator.clipboard.writeText(value).then(
-          () => setCopied(true),
-          () => {},
-        );
-      }}
-      className={`link-icon${copied ? " copied" : ""}`}
-    >
-      {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
-    </button>
   );
 }
 

@@ -31,6 +31,16 @@ export function AlertIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** There is more to see about this step, but only if you want it. */
+export function InfoIcon({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 16v-5M12 7.5h.01" />
+    </svg>
+  );
+}
+
 /** Nothing changed. A minus rather than a tick, which would overclaim. */
 export function NoChangeIcon({ size = 16 }: IconProps) {
   return (

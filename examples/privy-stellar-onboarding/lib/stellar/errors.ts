@@ -54,7 +54,7 @@ export function describeFailure(failure: ContributionFailure): {
       return {
         summary: `Not enough USDC. You have ${failure.have} and this would send ${failure.want}.`,
         remedy:
-          "Claim free test USDC from the Circle faucet in step 5, then check your balance again.",
+          "Claim free faucet USDC from the Circle faucet in step 5, then refresh your balances from the bar at the top.",
       };
 
     case "simulation-failed":

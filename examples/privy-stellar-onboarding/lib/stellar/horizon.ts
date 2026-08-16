@@ -30,15 +30,18 @@ export async function fundWithFriendbot(
 }
 
 /**
- * Has this wallet already paid itself in XLM?
+ * Has this wallet already sent XLM to `destination`?
  *
  * This is the record left behind by the signing check, and it is what lets that
  * step stay ticked across a reload instead of depending on this session's
- * memory of the click. Matched on a self-payment rather than on "signed
+ * memory of the click. Matched on that one payment rather than on "signed
  * anything" so that adding a trustline later cannot tick the step off on its
  * behalf.
  */
-export async function hasSelfPayment(address: string): Promise<boolean> {
+export async function hasNativePaymentTo(
+  address: string,
+  destination: string,
+): Promise<boolean> {
   try {
     const page = await horizon
       .payments()
@@ -52,7 +55,7 @@ export async function hasSelfPayment(address: string): Promise<boolean> {
         record.type === "payment" &&
         record.asset_type === "native" &&
         record.from === address &&
-        record.to === address,
+        record.to === destination,
     );
   } catch (error) {
     // An account nobody has funded yet has no history, which reads as a 404.

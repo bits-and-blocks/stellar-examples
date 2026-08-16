@@ -29,7 +29,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`}>
       <body>
-        <Providers>{children}</Providers>
+        {/* The column that keeps the footer at the bottom of the viewport on a
+            page too short to reach it, such as the signed-out one. */}
+        <div className="page">
+          <Providers>{children}</Providers>
+        </div>
       </body>
     </html>
   );

@@ -78,6 +78,66 @@ export async function addTrustline(signer: Signer): Promise<string> {
 }
 
 /**
+ * Removes the USDC trustline, which releases the 0.5 XLM it had set aside.
+ *
+ * The opt-out is the same `changeTrust` operation as above with a limit of
+ * zero: not a different mechanism, the same one asking for room for nothing.
+ *
+ * What it cannot do is drop a trustline that still holds tokens — the protocol
+ * refuses with `CHANGE_TRUST_INVALID_LIMIT` rather than deleting a balance
+ * behind your back. So a wallet that still holds some sends it back to the
+ * issuer first, in the same transaction: a payment to the issuer of an asset
+ * is how that asset is destroyed, and the two operations settle together or
+ * not at all, which is what stops a burn from landing without the opt-out it
+ * was for.
+ *
+ * The amount burned is read from the chain here rather than passed in, so it
+ * is the balance at the moment of building rather than whatever a page last
+ * saw. Anything that arrives between that read and the submission leaves the
+ * balance non-zero and takes the whole transaction down with it — the honest
+ * failure, rather than a partial one.
+ */
+export async function removeTrustline(
+  signer: Signer,
+): Promise<{ hash: string; burned: string | null }> {
+  const account = await horizon.loadAccount(signer.address);
+  const line = findUsdcLine(account);
+  const held = line && toStroops(line.balance) > 0n ? line.balance : null;
+
+  const builder = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  });
+
+  if (held !== null) {
+    builder.addOperation(
+      Operation.payment({
+        destination: USDC_ISSUER,
+        asset: USDC,
+        amount: held,
+      }),
+    );
+  }
+
+  const tx = builder
+    .addOperation(Operation.changeTrust({ asset: USDC, limit: "0" }))
+    .setTimeout(180)
+    .build();
+
+  const signed = await signer.signTransaction(tx);
+
+  try {
+    const result = await horizon.submitTransaction(signed);
+    return { hash: result.hash, burned: held };
+  } catch (caught) {
+    throw new ContributionError({
+      kind: "submission-failed",
+      detail: horizonErrorDetail(caught),
+    });
+  }
+}
+
+/**
  * Checks the two conditions that are knowable before spending anything.
  *
  * Simulation would catch both, but only as an opaque host error. Reading the

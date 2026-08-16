@@ -57,6 +57,20 @@ export const POOL_ADDRESS =
 
 export const isContractAddress = (address: string) => address.startsWith("C");
 
+/**
+ * Where the signing check in step 3 sends its 1 XLM.
+ *
+ * It used to pay the wallet itself, which left the balance untouched but also
+ * made the step read as a trick rather than as a payment. Paying someone else
+ * exercises the same signature over a transfer that actually moves, and on
+ * testnet the XLM it moves is worth nothing.
+ */
+export const SIGNING_CHECK_PAYEE =
+  "GDMDW3743F2HCWLXZ3UAS4QWVKNKXT4PWVG2BWATN3WFER3M7SB7MM3S";
+
+/** Who that address belongs to, as the buttons and notes refer to them. */
+export const SIGNING_CHECK_PAYEE_NAME = "Rayan";
+
 /** "1.5" -> 15000000n. Rejects more precision than the asset can represent. */
 export function toStroops(amount: string): bigint {
   const trimmed = amount.trim();

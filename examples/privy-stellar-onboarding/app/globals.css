@@ -110,8 +110,18 @@ code,
 
 /* ---------- layout ---------- */
 
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
 .shell {
   max-width: 840px;
+  /* Auto side margins stop a flex item from stretching, so the width the block
+     layout gave it for free is stated. */
+  width: 100%;
   margin: 0 auto;
   padding: 48px 20px 64px;
   display: flex;
@@ -384,12 +394,52 @@ code,
   border-color: var(--ok-line-strong);
 }
 
+/* The heading and anything that belongs to it, on one line. The gap under the
+   heading moves here so a title with a control beside it keeps the same
+   spacing as one without. */
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 .card-title {
   font-size: 16px;
   font-weight: 600;
   line-height: 1.4;
   color: var(--fg);
-  margin: 0 0 6px;
+  margin: 0;
+}
+
+/* Quiet enough to be an offer rather than an instruction: the step reads
+   perfectly well without ever pressing it. */
+.info-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease;
+}
+
+.info-button:hover {
+  background: var(--wash-hover);
+  color: var(--fg);
+}
+
+.info-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .card-note {
@@ -464,6 +514,22 @@ code,
 }
 
 .locked-note svg {
+  flex: none;
+}
+
+/* A standing aside inside a step: where to look next, once the control that
+   would have told you has done its one job and gone. */
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+.hint svg {
   flex: none;
 }
 
@@ -848,6 +914,294 @@ code,
   word-break: break-all;
 }
 
+/* ---------- modal ---------- */
+
+.modal {
+  margin: auto;
+  padding: 0;
+  max-width: 460px;
+  width: calc(100% - 32px);
+  /* A tall picture scrolls inside the panel rather than running off the
+     bottom of a viewport it cannot grow past. */
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: var(--shadow-lg);
+}
+
+.modal::backdrop {
+  background: rgba(6, 6, 9, 0.66);
+  backdrop-filter: blur(2px);
+}
+
+.modal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+
+.modal-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.modal-wide {
+  max-width: 880px;
+}
+
+.modal-title svg {
+  flex: none;
+}
+
+.modal-danger .modal-title svg {
+  color: var(--err);
+}
+
+.modal-info .modal-title svg {
+  color: var(--link);
+}
+
+/* The written steps and the recording of them, side by side where there is
+   room for both and stacked where there is not. The steps come first in the
+   source either way: they are the instructions, and the clip illustrates
+   them. */
+.modal-how {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (min-width: 700px) {
+  .modal-how {
+    grid-template-columns: 1fr auto;
+  }
+}
+
+.modal-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-steps strong {
+  color: var(--fg-2);
+  font-weight: 600;
+}
+
+/* A light-mode screenshot on a dark page. The frame and the white ground are
+   what stop it reading as a hole cut in the panel. */
+.modal-figure {
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  justify-self: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-strong);
+  background: #fff;
+}
+
+.modal-body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.modal-body p {
+  margin: 0 0 10px;
+}
+
+.modal-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Cancel first in the source so the keyboard reaches it first; the dangerous
+   answer sits on the right, where this page puts the action of a row. */
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.btn-danger {
+  border-color: var(--err-line);
+  background: var(--err-soft);
+  color: var(--err-text);
+}
+
+.btn-danger:hover:not(:disabled) {
+  border-color: var(--err);
+  background: rgba(248, 113, 113, 0.16);
+  color: var(--err-text);
+}
+
+/* ---------- explorer links ---------- */
+
+.explorer-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  /* No align-self here. These links sit in a row beside the switch and in a
+     column inside a list entry, and one value cannot mean "centre on the
+     switch" in the first and "leave alone" in the second — in a column it
+     would centre them across the row instead. The row centres them itself. */
+}
+
+.explorer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* No leading. Inherited line-height makes the box taller than the words and
+     the underline hangs below it, which reads as sitting low even when the box
+     itself is centred. */
+  line-height: 1;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.explorer-link span {
+  text-decoration: underline;
+  text-decoration-color: var(--line-hover);
+  text-underline-offset: 2px;
+}
+
+.explorer-link:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.explorer-link:hover span {
+  text-decoration-color: currentColor;
+}
+
+/* ---------- switch ---------- */
+
+/* Sized to sit on a row with the buttons rather than under them, so the step
+   that owns it reads as one line of controls. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--control);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.switch:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.switch-track {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 23px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--inset);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.switch.on .switch-track {
+  background: var(--ok-fill);
+  border-color: var(--ok-line-strong);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--dim);
+  color: var(--bg);
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.18s ease;
+}
+
+.switch.on .switch-knob {
+  transform: translateX(17px);
+  background: var(--ok);
+}
+
+/* What step 1 leaves behind: the state, and the account it is about, as one
+   panel. Split across a button that could no longer be pressed and a box under
+   it, the two halves each looked like half an answer. */
+.wallet-ready {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--ok-line-soft);
+  background: var(--ok-soft);
+}
+
+.wallet-ready-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ok-text-2);
+}
+
+.wallet-ready-state svg {
+  flex: none;
+}
+
+.wallet-ready-address {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--secondary);
+}
+
+.wallet-ready-address .mono {
+  min-width: 0;
+  word-break: break-all;
+}
+
 .kv {
   display: grid;
   grid-template-columns: 64px 1fr;
@@ -939,7 +1293,11 @@ code,
 
 .footer {
   max-width: 840px;
-  margin: 0 auto;
+  /* Takes up the slack of a short page, so the footer sits at the bottom of the
+     viewport rather than under a card halfway up it. On a page that overflows
+     there is no slack and it falls where it always did. */
+  margin: auto auto 0;
+  width: 100%;
   padding: 22px 20px 40px;
   border-top: 1px solid var(--line);
   display: flex;
