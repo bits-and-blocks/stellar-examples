@@ -69,12 +69,43 @@ if ! NODE="$(resolve_node)"; then
   exit 1
 fi
 
+# Ownership, shared by every container run below.
+#
+# The image runs as its own `stellar` user (uid 1000, home /stellar). On any
+# host where the checkout is owned by a different uid — a GitHub runner is uid
+# 1001, and plenty of Linux boxes are not 1000 either — that user cannot write
+# into a bind mount, so tar cannot extract, cargo cannot create target/ and
+# `contract fetch` cannot save a file. Docker Desktop on macOS and Windows
+# papers over this; Linux does not, which is why it shows up in CI first.
+#
+# Running as the caller's uid fixes the mounts and costs us everything the
+# image expected to write under /stellar and /config, so each of those moves to
+# /tmp, which is world-writable in the image and dies with the container.
+# RUSTUP_HOME is left alone: it lives at /usr/local/rustup, is world-readable,
+# and is only ever read.
+#
+# None of this is part of the SEP-58 recipe, and none of it reaches the
+# compiler. The one that could is CARGO_HOME, because the stellar CLI derives
+# its --remap-path-prefix from it — but moving the registry moves the prefix
+# with it, so dependency paths still remap to the same relative strings and the
+# Wasm is unchanged. Both halves of this example re-prove that on every run:
+# build.sh and verify.sh use these same flags, and their output is compared
+# against bytes on chain that were built without them.
+AS_CALLING_USER=(
+  --user "$(id -u):$(id -g)"
+  -e CARGO_HOME=/tmp/cargo
+  -e HOME=/tmp
+  -e STELLAR_CONFIG_HOME=/tmp/stellar/config
+  -e STELLAR_DATA_HOME=/tmp/stellar/data
+)
+
 # Utility container runs: the example directory at /work. Used for tasks that
 # are not the contract build itself (archiving, key handling).
 run_pinned() {
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
   docker run --rm \
     --platform "$BUILD_PLATFORM" \
+    "${AS_CALLING_USER[@]}" \
     -v "$(host_path "$EXAMPLE_DIR"):/work" \
     -w /work \
     "$@"
@@ -112,6 +143,7 @@ run_sep58_build() {
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
   docker run --rm \
     --platform "$BUILD_PLATFORM" \
+    "${AS_CALLING_USER[@]}" \
     -v "$(host_path "$source_dir"):/source" \
     -e "RUSTUP_TOOLCHAIN=$toolchain" \
     "$image" \

@@ -8,5 +8,5 @@
 
 . "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 
-run_pinned --entrypoint cargo "$STELLAR_CLI_IMAGE" \
+run_pinned --entrypoint cargo "$BLDIMG" \
   test --manifest-path /work/contract/Cargo.toml
