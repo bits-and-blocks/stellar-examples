@@ -1,5 +1,5 @@
 {
-  "name": "privy-stellar-onboarding",
+  "name": "stellar-wallets-kit-onboarding",
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
@@ -12,10 +12,11 @@
     "verify:contribution": "tsx scripts/verify-contribution.mts"
   },
   "dependencies": {
-    "@privy-io/react-auth": "3.37.1",
+    "@creit.tech/stellar-wallets-kit": "^2.5.0",
     "@stellar/stellar-sdk": "16.2.0",
     "framer-motion": "^13.1.0",
     "next": "16.3.1",
+    "preact": "^10.29.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

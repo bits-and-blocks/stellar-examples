@@ -23,10 +23,9 @@ import { FaucetHelp } from "@/components/FaucetHelp";
 import {
   CheckIcon,
   ExternalIcon,
-  MailIcon,
   RefreshIcon,
-  SparkIcon,
   SpinnerIcon,
+  WalletIcon,
 } from "@/components/icons";
 import {
   POOL_ADDRESS,
@@ -61,9 +60,9 @@ import { ActionError, useActions } from "@/lib/ui/use-actions";
 import { useSession } from "@/lib/wallet/session";
 
 export default function Home() {
-  // The one place the page learns whose wallet it is working with. Every
-  // Privy call lives behind this, so nothing below imports the SDK or knows
-  // that Privy is what answered.
+  // The one place the page learns whose wallet it is working with. Every Kit
+  // call lives behind this, so nothing below imports the Kit or knows which
+  // extension answered.
   const session = useSession();
   const { ready, connected, address, signer } = session;
 
@@ -159,16 +158,10 @@ export default function Home() {
     };
   }, [address]);
 
-  // The signed-out card. Privy opens its email modal and returns immediately
-  // rather than when somebody has finished with it, so there is nothing to
-  // report on success — the page changes by itself when the session does.
+  // The signed-out card. This resolves once a wallet is connected, and throws
+  // if the picker was closed or the wallet is on the wrong network. Only the
+  // failure has anything to say, so only the failure is rendered.
   const onConnect = () => actions.run("connect", () => session.connect());
-
-  const onCreateWallet = () =>
-    actions.run("wallet", async () => {
-      await session.createWallet();
-      return { message: "Your Stellar wallet is ready." };
-    });
 
   const onFund = () =>
     actions.run("fund", async () => {
@@ -225,10 +218,9 @@ export default function Home() {
         .setTimeout(180)
         .build();
 
-      // The signed transaction. Privy attaches the signature to the object it
-      // was given, so this happens to be `tx` — but the interface does not
-      // promise that, and submitting the return value is the habit that keeps
-      // working if the signer is ever swapped.
+      // The signed transaction. The Kit builds this anew from the XDR the
+      // wallet returned rather than handing back the one it was given, so
+      // submitting `tx` here would submit something unsigned.
       const signed = await signer.signTransaction(tx);
       const result = await horizon.submitTransaction(signed);
       setSignedFor(address);
@@ -421,7 +413,7 @@ export default function Home() {
   // to a step that is itself locked.
   const needsWallet =
     address === null
-      ? "Create your wallet in step 1 first. Every step below acts on it."
+      ? "Connect a wallet in step 1 first. Every step below acts on it."
       : undefined;
 
   // Nothing can touch a wallet the network has never heard of: signing needs a
@@ -452,11 +444,11 @@ export default function Home() {
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             className="hero"
           >
-            <h1>A Stellar wallet, with nothing to write down</h1>
+            <h1>A funded testnet wallet, from the one you already have</h1>
             <p>
-              Sign in with your email and you get a wallet you can actually
-              use: funded, able to hold USDC, and ready to send its first
-              payment. No seed phrase, no browser extension.
+              Connect Freighter or xBull and you get an account you can
+              actually use here: funded, able to hold USDC, and ready to send
+              its first payment. Your key stays in the extension.
             </p>
             <div className="badge-row">
               <span className="badge badge-accent">Testnet only</span>
@@ -466,8 +458,8 @@ export default function Home() {
           </motion.header>
 
           <Card
-            title="Sign in"
-            note="Privy emails you a code, then creates and keeps the wallet safe for you."
+            title="Connect your wallet"
+            note="Every transaction below is built here and approved by you in the extension. This page never sees your key."
           >
             <div className="row">
               <ActionButton
@@ -475,13 +467,14 @@ export default function Home() {
                 onClick={onConnect}
                 variant="primary"
                 size="lg"
-                icon={<MailIcon />}
+                pending="Waiting for your wallet"
+                icon={<WalletIcon />}
               >
-                Continue with email
+                Connect a wallet
               </ActionButton>
             </div>
-            {/* Only a login that went wrong has anything to say. Success needs
-                no sentence: the page becomes the walkthrough. */}
+            {/* A picker that was closed, or a wallet on the wrong network.
+                Success needs no sentence: the page becomes the walkthrough. */}
             <ResultPanel
               result={
                 actions.get("connect").result?.ok
@@ -522,36 +515,23 @@ export default function Home() {
 
         <Card
           step={1}
-          title="Create your Stellar wallet"
-          note="This makes a wallet tied to your account. Privy holds the key, so there is nothing for you to back up."
+          title="Your connected wallet"
+          note={`Connected with ${session.label}. The account below is the one it is currently exposing, and every step after this one acts on it.`}
           done={address !== null}
         >
-          {/* Until there is a wallet the step is a button. After, it is one
-              panel rather than two: a button that could no longer be pressed,
-              sitting above a box holding the address, said one thing in two
-              places. */}
-          {address === null ? (
-            <div className="row">
-              <ActionButton
-                status={actions.get("wallet").status}
-                onClick={onCreateWallet}
-                disabled={busy}
-                variant="primary"
-                pending="Creating"
-                icon={<SparkIcon />}
-              >
-                Create wallet
-              </ActionButton>
-            </div>
-          ) : (
+          {/* Never a button. There is nothing to create: the wallet arrived
+              with an account of its own, and this page could not make it one
+              if it wanted to. The step states which account the rest of the
+              walkthrough is about to act on, and offers it to be copied, since
+              the faucet in step 5 is going to ask for it. */}
+          {address !== null && (
             <div className="wallet-ready">
               <span className="wallet-ready-state">
                 <CheckIcon size={13} />
-                Your wallet is ready
+                Connected with {session.label}
               </span>
-              {/* The bar at the top carries this too, shortened. Here it is in
-                  full, beside the step that produced it, and copyable, since
-                  the faucet in step 5 is going to ask for it. */}
+              {/* The bar at the top carries this too, shortened. Here it is
+                  in full, beside the step it belongs to. */}
               <span className="wallet-ready-address">
                 <span className="mono">{address}</span>
                 <CopyButton value={address} size={13} />
@@ -568,14 +548,6 @@ export default function Home() {
               </span>
             </div>
           )}
-          {/* Success is the panel's to state. */}
-          <ResultPanel
-            result={
-              actions.get("wallet").result?.ok
-                ? undefined
-                : actions.get("wallet").result
-            }
-          />
         </Card>
 
         <Card

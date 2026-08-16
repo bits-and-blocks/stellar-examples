@@ -234,14 +234,16 @@ A `changeTrust` to testnet USDC, then a transfer into the pool contract address 
 
 **Branch:** `privy/signer-wallets-kit` · **Depends on:** C2
 
-Extract a `Signer` interface, keep Privy as one implementation, add Stellar Wallets Kit as the second. One env var picks the mode. Same contribution flow completes either way.
+Extract a `Signer` interface, keep Privy as one implementation, add Stellar Wallets Kit as the second, then split the two apart into `examples/privy-stellar-onboarding` and `examples/stellar-wallets-kit-onboarding`.
 
 **The interface is the artifact, and the two sides sit at different levels — that's the whole design problem.** Privy is "give me a hash, get a signature back." Wallets Kit is "give me an XDR, the user approves in Freighter/xBull, get a signed XDR back." So the interface has to be `signTransaction(tx) → signedTx`: the Privy implementation does hash extraction, `rawSign`, and signature attachment internally; the Kit implementation delegates wholesale. Getting that boundary right is what makes this worth doing — a toggle between two copy-pasted code paths is not.
 
-**In scope:** the interface, both implementations, env-var selection, README covering both modes.
-**Out of scope:** a wallet picker UI beyond what the Kit ships, WalletConnect configuration.
+**Why they were split rather than left as one app on an env var.** The env var was the right shape while the interface was being found — it forced both implementations through the same page and proved the boundary held. As a published example it is the wrong shape: each example is meant to be copied out whole, and a reader after one integration had to mentally delete the other, install an SDK they had no use for, and read a README half of which did not apply. Each directory is now the whole answer to one question, and each README links the other and states the difference in a table.
 
-**Done when:** the same contribution flow completes in both modes, selected by one env var, and both are documented.
+**In scope:** the interface, both implementations, two self-contained examples, a README each.
+**Out of scope:** a wallet picker UI beyond what the Kit ships, WalletConnect configuration, sharing code between the two directories — the repo's rule is that examples stand alone.
+
+**Done when:** the same contribution flow completes in both examples, each builds and lints with only the SDK it uses, and `verify:contribution` passes in both.
 
 **Resources**
 - [Stellar Wallets Kit](https://stellarwalletskit.dev/) · [GitHub](https://github.com/Creit-Tech/Stellar-Wallets-Kit) · [npm](https://www.npmjs.com/package/@creit.tech/stellar-wallets-kit)

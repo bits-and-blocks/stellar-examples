@@ -108,19 +108,12 @@ export function ExternalIcon({ size = 14 }: IconProps) {
   );
 }
 
-export function MailIcon({ size = 16 }: IconProps) {
+/** The wallet the user already has, which is the only kind this app uses. */
+export function WalletIcon({ size = 16 }: IconProps) {
   return (
     <svg {...base(size)}>
-      <rect x="2" y="4" width="20" height="16" rx="2" />
-      <path d="m2 7 10 6 10-6" />
-    </svg>
-  );
-}
-
-export function SparkIcon({ size = 16 }: IconProps) {
-  return (
-    <svg {...base(size)}>
-      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18" />
+      <path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M16 12h2" />
     </svg>
   );
 }

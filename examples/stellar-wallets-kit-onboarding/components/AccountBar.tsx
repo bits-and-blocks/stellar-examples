@@ -6,7 +6,7 @@ import { CopyButton } from "./CopyButton";
 import { ExternalIcon, LogoutIcon, RefreshIcon } from "./icons";
 
 type Props = {
-  /** Who this is: the signed-in email address. */
+  /** Who this is: the connected wallet's name for itself. */
   label: string;
   address: string | null;
   explorerUrl: string | null;
