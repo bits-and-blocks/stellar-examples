@@ -107,6 +107,16 @@ export function MailIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** A wallet you already have, as opposed to one this page makes for you. */
+export function WalletIcon({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M16 12h2" />
+    </svg>
+  );
+}
+
 export function SparkIcon({ size = 16 }: IconProps) {
   return (
     <svg {...base(size)}>

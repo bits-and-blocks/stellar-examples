@@ -56,18 +56,30 @@ const { addTrustline, contribute, getUsdcBalance } = await import(
 );
 const { ContributionError } = await import("../lib/stellar/errors.js");
 const { toStroops } = await import("../lib/stellar/assets.js");
+const { privySigner } = await import("../lib/signing/privy.js");
 type Failure = import("../lib/stellar/errors.js").ContributionFailure;
+type Signer = import("../lib/signing/signer.js").Signer;
 
-/** Stand-in for Privy's signRawHash, backed by a local key. */
-const signerFor =
-  (kp: Keypair) =>
-  async ({ address, chainType, hash }: { address: string; chainType: "stellar"; hash: `0x${string}` }) => {
+/**
+ * A `Signer` for the contribution path with no Privy account behind it.
+ *
+ * This is the real Privy adapter — `privySigner`, the same function the app
+ * builds its signer from — handed a local key in place of Privy's service. So
+ * the hash extraction, the hint, and the `DecoratedSignature` attachment are
+ * all the shipped code, and the only thing standing in is the one part a
+ * script cannot have: a key Privy holds.
+ *
+ * Constructing it through lib rather than signing here also keeps every XDR
+ * object on one side of the module split described above.
+ */
+const signerFor = (kp: Keypair): Signer =>
+  privySigner(kp.publicKey(), async ({ address, chainType, hash }) => {
     if (chainType !== "stellar") throw new Error("unexpected chainType");
     if (address !== kp.publicKey()) throw new Error("unexpected address");
     const bytes = Buffer.from(hash.slice(2), "hex");
     if (bytes.length !== 32) throw new Error(`hash was ${bytes.length} bytes`);
-    return { signature: `0x${kp.sign(bytes).toString("hex")}` as `0x${string}` };
-  };
+    return { signature: `0x${kp.sign(bytes).toString("hex")}` as const };
+  });
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -175,24 +187,24 @@ console.log("  DEMO SAC deployed.");
 console.log("\nFailure taxonomy:");
 
 await expectFailure("missing trustline (donor)", "missing-trustline", () =>
-  contribute(donor.publicKey(), "5", signerFor(donor)),
+  contribute(signerFor(donor), "5"),
 );
 
 await expectFailure(
   "missing trustline surfaces from Soroban when preflight is skipped",
   "simulation-failed",
   () =>
-    contribute(donor.publicKey(), "5", signerFor(donor), {
+    contribute(signerFor(donor), "5", {
       skipPreflight: true,
     }),
 );
 
 console.log("\n  adding donor trustline…");
-const trustlineTx = await addTrustline(donor.publicKey(), signerFor(donor));
+const trustlineTx = await addTrustline(signerFor(donor));
 check("changeTrust signed by the stand-in signer", true, trustlineTx);
 
 await expectFailure("insufficient balance", "insufficient-balance", () =>
-  contribute(donor.publicKey(), "5", signerFor(donor)),
+  contribute(signerFor(donor), "5"),
 );
 
 await submit(issuer, (b) =>
@@ -212,7 +224,7 @@ console.log("  donor funded with 100 DEMO.");
 const noTrustlineRecipient = Keypair.random();
 await fund(noTrustlineRecipient);
 await expectFailure("missing trustline (recipient)", "missing-trustline", () =>
-  contribute(donor.publicKey(), "1", signerFor(donor), {
+  contribute(signerFor(donor), "1", {
     recipient: noTrustlineRecipient.publicKey(),
   }),
 );
@@ -220,7 +232,7 @@ await expectFailure("missing trustline (recipient)", "missing-trustline", () =>
 // --- success case ---------------------------------------------------------
 console.log("\nSuccess case:");
 
-const hash = await contribute(donor.publicKey(), "25", signerFor(donor));
+const hash = await contribute(signerFor(donor), "25");
 check("SAC transfer accepted", true, hash);
 console.log(`     https://stellar.expert/explorer/testnet/tx/${hash}`);
 
@@ -232,7 +244,7 @@ check("pool credited", poolHas === "25.0000000", `balance ${poolHas}`);
 // Pins the behaviour that made the first version of the UI failure demo
 // misleading: skipPreflight removes a check, it does not induce a failure. With
 // a trustline and enough balance, a contribution must still go through.
-const skipped = await contribute(donor.publicKey(), "5", signerFor(donor), {
+const skipped = await contribute(signerFor(donor), "5", {
   skipPreflight: true,
 });
 check("skipping preflight still succeeds when state is healthy", true, skipped);
@@ -241,7 +253,7 @@ await expectFailure(
   "over-balance without preflight degrades to a host error",
   "simulation-failed",
   () =>
-    contribute(donor.publicKey(), "999999", signerFor(donor), {
+    contribute(signerFor(donor), "999999", {
       skipPreflight: true,
     }),
 );

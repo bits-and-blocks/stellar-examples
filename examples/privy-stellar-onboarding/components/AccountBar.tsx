@@ -12,7 +12,8 @@ import {
 } from "./icons";
 
 type Props = {
-  email: string;
+  /** Who this is: an email address in Privy mode, a wallet's name in Kit mode. */
+  label: string;
   address: string | null;
   explorerUrl: string | null;
   xlm: string | null;
@@ -29,7 +30,7 @@ type Props = {
  * out stay reachable from any point in the walkthrough.
  */
 export function AccountBar({
-  email,
+  label,
   address,
   explorerUrl,
   xlm,
@@ -51,10 +52,10 @@ export function AccountBar({
       className="bar"
     >
       <div className="bar-identity">
-        <span className="avatar">{email.slice(0, 1).toUpperCase()}</span>
+        <span className="avatar">{label.slice(0, 1).toUpperCase()}</span>
         <span style={{ minWidth: 0 }}>
-          <span className="bar-email" title={email}>
-            {email}
+          <span className="bar-email" title={label}>
+            {label}
           </span>
           {address ? (
             <span className="bar-address">

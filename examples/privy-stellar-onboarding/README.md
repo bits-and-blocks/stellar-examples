@@ -1,68 +1,131 @@
 # privy-stellar-onboarding
 
-Email login to funded testnet contribution in one flow: Privy embedded wallet,
-then test USDC into a pool via the Stellar Asset Contract with transfer results
-checked. The commit history is the integration timer.
+Email login to a funded testnet contribution in one flow: create an embedded
+Stellar wallet from an email address, add a USDC trustline, and send USDC to a
+pool through the Stellar Asset Contract — with no seed phrase at any point.
 
-**Status: working.** Email login to a USDC contribution through the Stellar
-Asset Contract, with no seed phrase at any point. The Privy integration measured
-**15 minutes 8 seconds** — see [Integration timer](#integration-timer). The
-contribution path, including every failure mode, is verified against live
-testnet by `npm run verify:contribution`.
+The same flow also runs against a wallet the user already has (Freighter or
+xBull, via Stellar Wallets Kit), selected with one environment variable.
 
-## The claim this validates
+**Testnet only.** No real money is involved, and no mainnet configuration path
+exists — see [Testnet only](#testnet-only).
 
-> A first-time donor can go from an email address to a completed on-chain
-> contribution without ever seeing a seed phrase, and a competent developer can
-> wire that up in under a day.
+---
 
-The second half is the part that is easy to assert and hard to prove, so this
-example measures it. The commit history is the instrument: the elapsed time
-between the commit titled `integration start` and the commit titled
-`first signed testnet tx` is the number. It is whatever it turns out to be.
+## Requirements
 
-## Which shape Privy's Stellar support takes
+- Node.js 20+
+- A [Privy app ID](https://dashboard.privy.io) — free, and public by design
+- Or, for `wallets-kit` mode: [Freighter](https://freighter.app) or
+  [xBull](https://xbull.app) installed and **switched to Test Net**
 
-Phase 0 asked whether Privy provides first-class Stellar embedded wallets, or
-only raw ed25519 signing with us building and submitting the XDR ourselves.
+## Quick start
 
-**The answer is neither, exactly. Stellar sits in Privy's Tier 2 tier, which
-splits the two.** Privy handles the wallet; we handle the transaction.
+```bash
+npm install
+cp .env.example .env.local     # set NEXT_PUBLIC_PRIVY_APP_ID
+npm run dev
+```
 
-| Privy provides | We build ourselves |
+Open http://localhost:3000. In the Privy dashboard, add `http://localhost:3000`
+to your app's allowed origins, or login will be rejected.
+
+The page walks through seven steps and each one tells you what it did:
+
+| # | Step | What happens |
+| --- | --- | --- |
+| 1 | Create your Stellar wallet | Privy creates an embedded wallet, `chainType: "stellar"` |
+| 2 | Get some test XLM | Friendbot funds the account |
+| 3 | Check that signing works | A no-op payment, to prove the signature is accepted |
+| 4 | Switch on USDC | `changeTrust` — reserves 0.5 XLM, refundable |
+| 5 | Claim some test USDC | Circle's [testnet faucet](https://faucet.circle.com), 20 USDC per 2 hours |
+| 6 | Contribute | `transfer` on the Stellar Asset Contract |
+| 7 | See what a failure looks like | Two deliberate failures, with and without preflight |
+
+### Running against a browser wallet instead
+
+No Privy app ID is needed, and none is used:
+
+```bash
+NEXT_PUBLIC_WALLET_MODE=wallets-kit npm run dev
+```
+
+The extension must be on **Test Net** with a funded account. The app checks the
+wallet's network at connect time and stops there if it is on Public, rather than
+asking you to approve a transaction your wallet cannot make sense of.
+
+## Configuration
+
+All configuration is public by design — there is no server, no API route, and no
+`PRIVY_APP_SECRET`. Wallet creation and signing both happen in the browser.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_WALLET_MODE` | `privy` | `privy` or `wallets-kit` |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | — | Required in `privy` mode, unused in `wallets-kit` |
+| `NEXT_PUBLIC_POOL_ADDRESS` | a testnet `G…` address | Where contributions go; accepts a `G…` or a pool contract's `C…` |
+| `NEXT_PUBLIC_ASSET_CODE` | `USDC` | Override if Circle's faucet is flaky |
+| `NEXT_PUBLIC_ASSET_ISSUER` | Circle's testnet issuer | Override alongside `ASSET_CODE` |
+
+Network settings are deliberately absent from the environment. See
+[Testnet only](#testnet-only).
+
+## Scripts
+
+| Command | What it does |
 | --- | --- |
-| Embedded wallet creation with `chainType: 'stellar'` | Transaction building (XDR) |
-| Derived `G…` address, key management, recovery, export | Submission to Horizon / Soroban RPC |
-| An ed25519 signature over an arbitrary 32-byte hash | Sequence numbers, fees, timebounds |
-| Email/OAuth auth and session handling | All asset- and SAC-specific logic |
+| `npm run dev` | Start the dev server |
+| `npm run build` | Production build — takes no secrets, builds in either mode |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run verify:contribution` | Run the contribution path against live testnet |
 
-Privy's own tiering, for reference: Tier 3 (Ethereum, Solana, Tempo) is
-end-to-end including transaction construction; **Tier 2 (Stellar, Cosmos, Sui,
-Tron, Aptos, Ton, Bitcoin, and others) is wallet abstractions plus raw signing**;
-Tier 1 is raw cryptography only.
+---
 
-So "raw ed25519 signing" undersells it — we never derive an address or touch a
-key. "First-class embedded wallets" oversells it — Privy builds and submits
-nothing. Both APIs we need are client-side:
+## How it works
+
+### One `Signer` interface, two implementations
+
+Privy and Stellar Wallets Kit sit at different levels, so the interface is drawn
+at the higher of the two — [`lib/signing/signer.ts`](lib/signing/signer.ts):
+
+```ts
+type Signer = {
+  readonly address: string;
+  signTransaction(tx: Transaction): Promise<Transaction>;
+};
+```
+
+| | Privy | Stellar Wallets Kit |
+| --- | --- | --- |
+| Holds the key | Yes, custodied | No — it stays in the extension |
+| Accepts | 32 bytes | A transaction, as XDR |
+| Returns | 64 raw bytes | Signed XDR |
+| Who approves | Nobody, it signs on request | The user, in the extension |
+
+Drawn any lower (`signHash`, say) the Kit could not implement it at all.
+
+> **The one thing that bites here:** Privy attaches the signature to the
+> transaction you passed in, so the argument and the result are the same object.
+> A wallet extension returns *different* XDR. Code that submits the argument
+> instead of the return value works in Privy mode and silently submits an
+> unsigned transaction in Kit mode. Always use the return value.
+
+### The Privy glue
+
+Stellar sits in Privy's **Tier 2** — Privy handles the wallet (creation, key
+management, recovery, export) and you handle the transaction (XDR, submission,
+sequence numbers, fees). Both APIs you need are client-side:
 
 ```ts
 import { useCreateWallet, useSignRawHash } from "@privy-io/react-auth/extended-chains";
 
 const { wallet } = await createWallet({ chainType: "stellar" });
-const { signature } = await signRawHash({ address, chainType: "stellar", hash });
 ```
 
-### What follows from that
-
-**No server, and therefore no secrets.** Wallet creation and signing both happen
-in the browser, so this app has no API routes, no backend, and no
-`PRIVY_APP_SECRET`. The only environment variable is `NEXT_PUBLIC_PRIVY_APP_ID`,
-which is a public identifier by design — Privy scopes it with a dashboard
-allowed-origins list. "No secrets in history" is structural here, not a policy
-we have to enforce.
-
-**The integration reduces to one piece of glue.** Privy returns a bare 64-byte
-signature; Stellar wants a `DecoratedSignature` appended to the transaction:
+Privy returns a bare 64-byte signature; Stellar wants a `DecoratedSignature`
+appended to the transaction. That adapter is the entire Privy-specific surface
+area of this app — [`lib/signing/privy.ts`](lib/signing/privy.ts):
 
 ```ts
 const { signature } = await signRawHash({
@@ -79,174 +142,135 @@ tx.signatures.push(
 );
 ```
 
-That is the whole Privy-specific surface area. Everything else in this example
-is ordinary `@stellar/stellar-sdk` usage that would look the same behind any
-signer, which is also what makes the Phase 1 decision gate cheap: swapping to
-Stellar Wallets Kit would replace these lines and nothing else.
+Everything else is ordinary `@stellar/stellar-sdk` usage that would look the same
+behind any signer.
 
-## Testnet only
+### What the Kit implementation checks
 
-The network passphrase, Horizon URL, Soroban RPC URL and Friendbot URL are
-literals in [`lib/stellar/network.ts`](lib/stellar/network.ts). None is read
-from the environment, so no `.env` file, build flag or Vercel setting can point
-a deployment at mainnet; changing networks requires editing that file.
+Delegating is not trusting. [`lib/signing/wallets-kit.ts`](lib/signing/wallets-kit.ts)
+verifies three things that are otherwise invisible until Horizon rejects the
+result:
 
-The passphrase is load-bearing rather than cosmetic: it is mixed into the
-payload that `Transaction.hash()` produces, so a transaction built here is only
-ever valid on testnet. Submitted to mainnet it would be rejected as
-`tx_bad_auth` rather than succeeding against real funds.
+- **A different transaction.** The returned envelope's hash must equal the one
+  that was sent. A fee-bump wrapper is refused for the same reason.
+- **A different account.** Freighter signs with whichever account is *active*,
+  and that can be switched between connecting and approving. The signature is
+  verified against the address the app is using.
+- **A different network.** Checked once at connect time, because every hash here
+  is built against the testnet passphrase.
 
-## Running it
+### Where the two modes differ
 
-```bash
-npm install
-cp .env.example .env.local   # fill in NEXT_PUBLIC_PRIVY_APP_ID
-npm run dev
-```
+Only step 1. Privy creates a wallet on request; an extension arrives with an
+account already. `Session.createWallet` is `null` in Kit mode and the step
+renders as done, naming the wallet it connected with.
 
-The repository's shared CI installs and builds every example under `examples/`
-on each push and pull request, so this directory is covered by `npm install` and
-`npm run build`. `npm run lint` and `npm run typecheck` are available locally.
-The build takes no secrets.
+Everything after that is one code path with no branch on mode in it. The page
+reads [`useSession()`](lib/wallet/session.ts) and never asks what is behind it.
+Selection happens at build time — `NEXT_PUBLIC_` values are inlined, so exactly
+one session provider is ever mounted and a Kit build needs no Privy app ID.
 
-## Integration timer
+### The contribution flow
 
-**15 minutes 8 seconds**, from the end of setup to a confirmed transaction on
-testnet.
+Holding an asset on Stellar is an explicit act, so contributing is four steps,
+not one, and the app shows all four:
 
-| | Evidence | Time (UTC) |
-| --- | --- | --- |
-| Start | commit [`c546ce2`](https://github.com/bits-and-blocks/privy-stellar-onboarding/commit/c546ce2), the last pre-integration commit | 2026-08-15 00:19:54 |
-| End | ledger 4146515, [tx `1fe8822…`](https://stellar.expert/explorer/testnet/tx/1fe8822065555a7c716ba7514908fa899d15a40593984aa7277b0e5811c84c4d) | 2026-08-15 00:35:02 |
-
-### Why these endpoints, and not two commit hashes
-
-The brief called for commit-to-commit timing. The end marker here is a ledger
-close time instead, for a reason worth stating: **a repository owner can set any
-commit date they like, and the person reading this has no way to check.** A
-ledger close time is not something this repo controls. Anyone can fetch it:
-
-```bash
-curl -s https://horizon-testnet.stellar.org/transactions/1fe8822065555a7c716ba7514908fa899d15a40593984aa7277b0e5811c84c4d \
-  | grep created_at
-```
-
-The start marker is a commit, because "when did setup end" is a claim about the
-work and the commit log is the right record for it. Using the *last
-pre-integration* commit rather than a `integration start` marker also makes the
-number a conservative upper bound: it counts the gap before work resumed as
-integration time, so the real figure is lower.
-
-`c546ce2` lives in
-[bits-and-blocks/privy-stellar-onboarding](https://github.com/bits-and-blocks/privy-stellar-onboarding),
-the standalone repository this example was developed in and migrated from. That
-repo is archived and read-only. The link points there rather than at the
-equivalent commit in this repo deliberately: migrating rewrote every hash, and a
-frozen external repository is a better record of "when did setup end" than one
-that is still being written to.
-
-### What the 15 minutes does and does not include
-
-**Inside the window:** installing `@privy-io/react-auth` and
-`@stellar/stellar-sdk`, writing the signature glue, wiring email login, wallet
-creation, Friendbot funding and payment submission, and getting a transaction
-accepted by Horizon.
-
-**Outside the window, in Phase 0:** working out that Stellar is Tier 2 and what
-that implies — which is the part that would mislead a reader if it went
-unmentioned. Knowing in advance that you need `useCreateWallet`, `useSignRawHash`
-and a `DecoratedSignature` wrapper is most of the problem. That research is
-written up above precisely so the next person starts where this timer started.
-
-**Also outside the window:** the work was assisted by an AI coding agent. Take
-the number as evidence that the integration is small and well-specified — one
-adapter function and four hook calls — rather than as an estimate of how long it
-takes a person typing unaided.
-
-### Decision gate: passed
-
-Phase 1 was a gate. If Privy's embedded wallet could not produce a signature
-Horizon accepts, the plan was to stop, swap to Stellar Wallets Kit, and revise
-the claim. It signed and Horizon accepted it, so the flow continues on Privy.
-
-## The contribution flow
-
-A donor must hold USDC before they can contribute it, and on Stellar holding an
-asset is an explicit act. The flow is therefore four steps, not one, and the app
-shows all four rather than hiding them:
-
-1. **Trustline.** `changeTrust` to Circle's testnet USDC. Until this exists the
-   wallet cannot receive the asset *at all* — not "the transfer fails", but the
-   account has no place to put it. Costs 0.5 XLM held in reserve, not spent.
-2. **Acquire USDC.** Circle's [testnet faucet](https://faucet.circle.com),
-   20 USDC per address every 2 hours.
-3. **Preflight.** Read the on-chain state and refuse early if it cannot work.
+1. **Trustline.** `changeTrust` to the USDC issuer. Until this exists the wallet
+   cannot receive the asset *at all* — the account has no place to put it.
+   Costs 0.5 XLM held in reserve, not spent.
+2. **Acquire USDC.** Circle's testnet faucet.
+3. **Preflight.** Read on-chain state and refuse early if it cannot work.
 4. **Contribute.** `transfer` on the Stellar Asset Contract.
 
-Circle's testnet USDC was checked rather than assumed: the issuer
-`GBBD47IF…AQH3ZLLFLA5` publishes `home_domain: centre.io`, carries ~55k
-trustlines, and **its SAC is already deployed** at `CBIELTK6…`, so contributions
-need no deployment step. The SAC address is derived from the asset and network
-passphrase rather than configured, so a wrong-network build would compute an
-address that does not exist instead of quietly talking to the wrong contract.
+The SAC address is *derived* from the asset and network passphrase rather than
+configured, so a wrong-network build would compute an address that does not
+exist instead of quietly talking to the wrong contract.
 
 ### Three details that are easy to get wrong
 
 **Sign after preparing, never before.** Simulation determines the footprint and
-resource fees, and assembling those into the transaction produces a *different*
-transaction with a different hash. A signature taken before
-`assembleTransaction` is dead on arrival.
+resource fees, and assembling those produces a *different* transaction with a
+different hash. A signature taken before `assembleTransaction` is dead on
+arrival.
 
-**`from` is the transaction source, so there is no auth entry to sign.** The SAC
-calls `require_auth` on the sending address. When that address is also the
-transaction's source account, the ordinary transaction signature satisfies it.
-If the two ever diverge you must sign a `SorobanAuthorizationEntry` separately,
-which is considerably harder with a raw-hash signer. Keeping them identical is
-what makes this integration one signature rather than two mechanisms.
+**Keep `from` equal to the transaction source.** The SAC calls `require_auth` on
+the sending address; when that is also the source account, the ordinary
+transaction signature satisfies it. If the two diverge you must sign a
+`SorobanAuthorizationEntry` separately, which is considerably harder with a
+raw-hash signer.
 
-**Trustlines are asymmetric between the interim and final targets.** The interim
-G-address recipient needs its own USDC trustline. The final pool contract, a
-C-address, does not, because contract balances live in contract storage.
-`preflight` branches on the address prefix, so swapping
-`NEXT_PUBLIC_POOL_ADDRESS` from one to the other needs no code change.
+**Trustlines are asymmetric.** A `G…` recipient needs its own USDC trustline; a
+`C…` contract does not, because contract balances live in contract storage.
+`preflight` branches on the address prefix, so switching `NEXT_PUBLIC_POOL_ADDRESS`
+between the two needs no code change.
 
-### Failure modes are outcomes, not one error string
+### Failure modes
 
-Simulation would catch most of these, but only as an opaque host error. Reading
-the state directly means the donor is told which account is short and by how
-much. [`lib/stellar/errors.ts`](lib/stellar/errors.ts) models four outcomes:
+Simulation catches most of these, but only as an opaque host error. Reading state
+directly means the user is told which account is short and by how much.
+[`lib/stellar/errors.ts`](lib/stellar/errors.ts) models four outcomes:
 
-| Outcome | Detected by | What the donor is told |
+| Outcome | Detected by | What the user is told |
 | --- | --- | --- |
-| `missing-trustline` | preflight, per account | which account, and that a C-address would not need one |
+| `missing-trustline` | preflight, per account | which account, and that a `C…` address would not need one |
 | `insufficient-balance` | preflight | held versus requested |
 | `simulation-failed` | Soroban simulation | the host error, and that it cost no fee |
 | `submission-failed` | send / poll | that signing worked and the network did not accept it |
 
-The app has two buttons that deliberately fail. Both send the same impossible
-contribution — 999999 USDC — and differ only in whether preflight runs.
-**Too much, with the check** produces `insufficient-balance` with the held and
-requested amounts. **Too much, no check** skips preflight, so the same mistake
-arrives from Soroban as a host error instead.
+Step 7 has two buttons that send the same impossible contribution (999999 USDC)
+and differ only in whether preflight runs, so you can see both shapes of error.
+Note that `skipPreflight` does not *induce* a failure — it removes an early
+check, and a contribution that would have succeeded still succeeds without it.
 
-Worth being precise about what `skipPreflight` does, because the first version
-of this demo got it wrong: it does not induce a failure. It removes an early
-check. A contribution that would have succeeded still succeeds without it — as
-one of the transactions below demonstrates, having been sent through that path
-by accident. Only when paired with a genuinely impossible contribution does it
-show the ugly error it is meant to show.
+## Testnet only
 
-## Verifying the contribution path
+The network passphrase, Horizon URL, Soroban RPC URL and Friendbot URL are
+literals in [`lib/stellar/network.ts`](lib/stellar/network.ts). None is read from
+the environment, so no `.env` file, build flag or deployment setting can point
+this app at mainnet — changing networks requires editing that file.
+
+The passphrase is load-bearing rather than cosmetic: it is mixed into the payload
+that `Transaction.hash()` produces, so a transaction built here is only ever
+valid on testnet. Submitted to mainnet it would be rejected as `tx_bad_auth`
+rather than succeeding against real funds.
+
+## Project structure
+
+```
+app/                    Next.js App Router — one page, one providers file
+components/             Presentational components, no styling system
+lib/
+  signing/
+    signer.ts           The Signer interface
+    privy.ts            Hash → DecoratedSignature adapter
+    wallets-kit.ts      Delegates to the extension, verifies the result
+  wallet/
+    mode.ts             Reads NEXT_PUBLIC_WALLET_MODE
+    session.ts          useSession() — what the page consumes
+    privy-session.tsx   Privy provider
+    kit-session.tsx     Wallets Kit provider
+  stellar/
+    network.ts          Testnet literals — the only network config
+    assets.ts           USDC, SAC derivation, stroop conversion
+    contribute.ts       preflight + transfer
+    errors.ts           The four failure outcomes
+    horizon.ts          Account and balance reads
+  ui/                   Activity log, contribution list, local state
+scripts/
+  verify-contribution.mts
+```
+
+## Verifying against live testnet
 
 ```bash
 npm run verify:contribution
 ```
 
 [`scripts/verify-contribution.mts`](scripts/verify-contribution.mts) runs the
-real `contribute`, `addTrustline` and `preflight` against live testnet, with a
-local `Keypair` substituted for Privy through the identical interface. It
-asserts every failure mode, then performs a real SAC transfer and checks both
-balances moved:
+real `contribute`, `addTrustline` and `preflight` against testnet. It builds its
+`Signer` from the shipped `privySigner`, handed a local `Keypair` in place of
+Privy's service — so the hash extraction, the hint and the `DecoratedSignature`
+attachment are all the real code, and only the custodian is substituted.
 
 ```
 ✅ missing trustline (donor)
@@ -259,98 +283,57 @@ balances moved:
 ✅ pool credited — balance 25.0000000
 ```
 
-It uses a throwaway issuer rather than Circle's USDC because the success case
-needs the script to mint itself a supply and Circle's faucet is captcha-gated.
-The SAC is generated per-asset by the protocol and is the same contract either
-way. The script deploys that SAC itself with `createStellarAssetContract`, which
-is the step Circle's USDC does not need and a fresh issuer does.
+It generates its own keypairs and needs no configuration. It uses a throwaway
+issuer rather than Circle's USDC because the success case needs to mint itself a
+supply and Circle's faucet is captcha-gated; the SAC is generated per-asset by
+the protocol and is the same contract either way.
 
-It is not part of CI: it spends real testnet ledger time and depends on
-Friendbot being up, so a network hiccup would show as a broken build.
+It is not part of CI: it spends real testnet ledger time and depends on Friendbot
+being up, so a network hiccup would show as a broken build.
 
-## Verifying the signature glue without Privy
+## Troubleshooting
 
-[`lib/stellar/sign.ts`](lib/stellar/sign.ts) is the only component that can
-silently produce an invalid transaction, so it was tested against real testnet
-with a local `Keypair` substituted for Privy — same interface, 32-byte hash in
-and 64-byte signature out. Horizon accepted the result
-([tx `e477097…`](https://stellar.expert/explorer/testnet/tx/e47709761bf1351e38c4ad5435963c9cca05561e4573b368d5f7ef82f1d3c0c5)),
-which isolates the `DecoratedSignature` construction, the hint derivation and
-the signature-base hashing from anything Privy does.
+| Symptom | Cause |
+| --- | --- |
+| Login fails or the Privy modal never returns | Your origin is not in the Privy dashboard's allowed-origins list |
+| The page says the wallet mode is not recognised | `NEXT_PUBLIC_WALLET_MODE` is set to something other than `privy` or `wallets-kit` |
+| Kit mode refuses to continue after connecting | The extension is on Public — switch it to Test Net |
+| Friendbot funding fails | Friendbot rate-limits per address; wait, or use an already-funded account |
+| Step 5 gives you nothing | Circle's faucet allows 20 USDC per address per 2 hours |
+| A contribution fails with a trustline error | Step 4 was skipped, or the `G…` recipient has no trustline of its own |
 
-That mattered for debugging order: with the glue independently confirmed, a
-failure in the real flow could only be Privy or the app wiring.
+## Not included
 
-## Transactions
-
-Every transaction below was signed by a key held in a Privy embedded wallet,
-created from an email address with no seed phrase shown at any point.
-
-| Phase | What it proves | Signer | Transaction |
-| --- | --- | --- | --- |
-| 1 | A Privy-held key produces a signature Horizon accepts | Privy | [`1fe8822…`](https://stellar.expert/explorer/testnet/tx/1fe8822065555a7c716ba7514908fa899d15a40593984aa7277b0e5811c84c4d) |
-| 1 | The `DecoratedSignature` glue is correct independently of Privy | stand-in | [`e477097…`](https://stellar.expert/explorer/testnet/tx/e47709761bf1351e38c4ad5435963c9cca05561e4573b368d5f7ef82f1d3c0c5) |
-| 2 | A SAC `transfer` moves the asset and both balances change | stand-in | [`0aece5d…`](https://stellar.expert/explorer/testnet/tx/0aece5d4cc8e9ba92b2ee7790ebc3bd0763df7a2a2dc765b0829abcf8c2e09c5) |
-
-The signer column is not decoration. Only the first row was signed by a Privy
-embedded wallet; the other two used a local keypair through the identical
-interface, to isolate the Stellar mechanics from Privy's signing service.
-
-### Contributions
-
-Real USDC into the pool through the Stellar Asset Contract, each signed by a
-Privy embedded wallet created from an email address. 1 USDC each, from
-`GCDAQBYC…` to the interim pool `GCVNURGF…`.
-
-| Transaction | Ledger | Path |
-| --- | --- | --- |
-| [`3aafb4e…`](https://stellar.expert/explorer/testnet/tx/3aafb4e748643ac67513558bde67cc6bd6e69e6c3465da23f9aa88042d4dec0c) | 4146886 | normal |
-| [`925ff0d…`](https://stellar.expert/explorer/testnet/tx/925ff0d9a1e7ab286333c66bbe146ad68245153c9e98b2e424d1e702dc87d5f8) | 4146890 | preflight skipped |
-| [`72a58b7…`](https://stellar.expert/explorer/testnet/tx/72a58b756f32280754948594409dd7e2f269c250b49af459dc347116fddd869d) | 4146895 | normal |
-
-The middle one succeeded while preflight was skipped, which is the correct
-outcome and the reason the failure demo was rewritten: the donor held a
-trustline and enough USDC, so there was nothing for preflight to catch.
-
-## What this deliberately omits
-
-- **Mainnet.** Testnet only, enforced structurally as described above.
-- **A backend.** No server, no database, no account of what happened that this
-  app owns. The activity log and the contribution list survive a reload in
-  `localStorage`, but they are a convenience cache of what this browser did and
-  nothing reads them as truth: the chain is the only record, and every entry
-  links out to it.
-- **Rust and contract deployment.** The pool contract is consumed as a
-  configured address and treated as an interface. It is built and deployed in
-  the contract-side repos.
-- **Design.** No component library, no state management, no styling system.
-  Every pixel here is in service of making the integration legible.
-- **Production auth concerns.** No session hardening, rate limiting, MFA policy,
-  or account recovery flows beyond what Privy provides by default.
+- **Mainnet.** Testnet only, enforced structurally.
+- **A backend.** No server, no database. The activity log and contribution list
+  survive a reload in `localStorage`, but nothing reads them as truth — the chain
+  is the only record, and every entry links out to it.
+- **Rust and contract deployment.** The pool contract is consumed as a configured
+  address and treated as an interface.
+- **A design system.** No component library, no state management library.
 - **Multi-asset support.** One asset, one pool, one path through the app.
-- **Retry and resubmission logic** beyond surfacing the error. A real donor flow
-  would handle `tx_bad_seq` and `TRY_AGAIN_LATER` with backoff; this one reports
-  them.
-- **Removing a trustline, or reclaiming the 0.5 XLM reserve.** Adding one is
-  the step donors get stuck on, so that is the step this demonstrates.
-- **A unit test suite.** The verification scripts hit live testnet and are the
-  only tests here. That is a deliberate trade: mocking Horizon and Soroban would
-  test the mocks, and the failure modes worth proving are exactly the ones that
-  only real network state produces.
+- **Both signers at once.** The mode is a build-time choice.
+- **Retry and resubmission logic** beyond surfacing the error. A production flow
+  would handle `tx_bad_seq` and `TRY_AGAIN_LATER` with backoff.
+- **A unit test suite.** The verification script hits live testnet and is the
+  only test here — mocking Horizon and Soroban would test the mocks.
 
 ## Resources
 
-- Privy — [docs](https://docs.privy.io),
-  [chain support tiers](https://docs.privy.io/wallets/overview/chains),
-  [tier 2 recipe](https://docs.privy.io/recipes/use-tier-2),
-  [raw sign](https://docs.privy.io/wallets/using-wallets/other-chains/raw-sign),
+- **Privy** — [docs](https://docs.privy.io) ·
+  [chain support tiers](https://docs.privy.io/wallets/overview/chains) ·
+  [tier 2 recipe](https://docs.privy.io/recipes/use-tier-2) ·
+  [raw sign](https://docs.privy.io/wallets/using-wallets/other-chains/raw-sign) ·
   [client-side wallet creation](https://docs.privy.io/wallets/wallets/create/from-my-client)
-- Stellar — [Stellar Asset Contract](https://developers.stellar.org/docs/tokens/stellar-asset-contract),
-  [JS SDK](https://stellar.github.io/js-stellar-sdk/),
+- **Stellar** — [Stellar Asset Contract](https://developers.stellar.org/docs/tokens/stellar-asset-contract) ·
+  [JS SDK](https://stellar.github.io/js-stellar-sdk/) ·
   [Soroban RPC](https://developers.stellar.org/docs/data/apis/rpc)
-- [Stellar Wallets Kit](https://stellarwalletskit.dev) — the fallback signer if
-  the Phase 1 decision gate fails
-- [Original brief](docs/brief.md)
+- **Stellar Wallets Kit** — [docs](https://stellarwalletskit.dev) ·
+  [GitHub](https://github.com/Creit-Tech/Stellar-Wallets-Kit) ·
+  [npm](https://www.npmjs.com/package/@creit.tech/stellar-wallets-kit)
+- [SEP-43](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0043.md)
+  — the wallet interface the Kit's modules implement, and the reason
+  `signTransaction` takes the shape it does
 
 ## License
 
