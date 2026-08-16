@@ -54,9 +54,9 @@ if (networkPassphrase !== Networks.TESTNET) {
 
 // --- local rebuild ---------------------------------------------------------
 
-const wasmName = readFileSync(join(EXAMPLE_DIR, "build.env"), "utf8")
+const wasmName = readFileSync(join(EXAMPLE_DIR, "build.conf"), "utf8")
   .match(/^WASM_NAME="(.+)"$/m)?.[1];
-if (!wasmName) fail("could not read WASM_NAME from build.env");
+if (!wasmName) fail("could not read WASM_NAME from build.conf");
 
 const wasmPath = join(EXAMPLE_DIR, "out", wasmName);
 let localWasm;
@@ -118,7 +118,7 @@ const onChainCodeHash = sha256(onChainWasm);
 
 console.log(`contract    ${contractId}`);
 console.log(`network     testnet (${rpcUrl})`);
-console.log(`image       ${deployment.builtWith.image}`);
+console.log(`image       ${deployment.sep58.bldimg}`);
 console.log();
 console.log(`rebuilt     ${localHash}  (${localWasm.length} bytes)`);
 console.log(`on chain    ${onChainHash}  (${onChainWasm.length} bytes)`);

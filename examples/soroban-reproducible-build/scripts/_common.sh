@@ -1,15 +1,14 @@
 # shellcheck shell=bash
-# Sourced by build.sh and deploy.sh. Not executable on its own.
+# Sourced by the other scripts. Not executable on its own.
 
 set -euo pipefail
 
 EXAMPLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=../build.env
-. "$EXAMPLE_DIR/build.env"
+# shellcheck source=../build.conf
+. "$EXAMPLE_DIR/build.conf"
 
 # Docker Desktop on Windows wants a Windows-style host path for -v, while MSYS
-# would otherwise rewrite the container-side "/work" into "C:\work". Forward
-# slashes are accepted by Docker on every platform.
+# would otherwise rewrite container-side paths like "/source" into "C:\source".
 host_path() {
   if command -v cygpath >/dev/null 2>&1; then
     cygpath -m "$1" # Windows path, forward slashes
@@ -18,13 +17,8 @@ host_path() {
   fi
 }
 
-# Every container invocation in this example goes through here, so the pin and
-# the working directory can never drift between build and deploy.
-#
-# -w /work matters for reproducibility as much as the digest does: cargo records
-# absolute paths, so building at /work rather than at whatever the host happens
-# to call this directory is what stops my checkout path from leaking into the
-# wasm and changing its hash.
+# Utility container runs: the example directory at /work. Used for tasks that
+# are not the contract build itself (archiving, key handling).
 run_pinned() {
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
   docker run --rm \
@@ -32,4 +26,90 @@ run_pinned() {
     -v "$(host_path "$EXAMPLE_DIR"):/work" \
     -w /work \
     "$@"
+}
+
+# The toolchain the image ships, e.g. "1.97.1-x86_64-unknown-linux-gnu".
+#
+# SEP-58 §"Why no explicit rust version field": a `rust-toolchain.toml` inside
+# the source would otherwise make rustup silently swap toolchains mid-build,
+# defeating the image pin. Reading the image's own default and forcing it back
+# in via RUSTUP_TOOLCHAIN closes that hole for *any* source, including sources
+# we did not write — which matters once verify.sh builds strangers' contracts.
+image_toolchain() {
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+  docker run --rm --platform "$BUILD_PLATFORM" --entrypoint rustup "$1" default \
+    | cut -d' ' -f1
+}
+
+# The SEP-58 build invocation, reconstructed from recorded fields.
+#
+#   <entry point> <bldarg...> <bldopt...>
+#
+# and per the SEP the source is mounted at /source, which is also the image's
+# WORKDIR, so relative paths resolve against the source root. We record no
+# `bldarg`, so a verifier applies the spec's default of `contract` then `build`
+# — passed explicitly here so producer and verifier run the identical command.
+#
+#   $1  source directory on the host (the archive's single top-level directory)
+#   $2  image reference
+#   $3  RUSTUP_TOOLCHAIN value
+#   $4+ arguments after the entry point
+run_sep58_build() {
+  local source_dir="$1" image="$2" toolchain="$3"
+  shift 3
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+  docker run --rm \
+    --platform "$BUILD_PLATFORM" \
+    -v "$(host_path "$source_dir"):/source" \
+    -e "RUSTUP_TOOLCHAIN=$toolchain" \
+    "$image" \
+    "$@"
+}
+
+sha256_of() {
+  node -e "
+    const {createHash}=require('crypto'),{readFileSync}=require('fs');
+    process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'));
+  " "$1"
+}
+
+# Testnet, pinned in code. Nothing reads these from the environment, so this
+# example cannot be pointed at mainnet by setting a variable.
+RPC_URL="https://soroban-testnet.stellar.org"
+NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+FRIENDBOT_URL="https://friendbot.stellar.org"
+KEY_FILE="$EXAMPLE_DIR/.deployer-secret"
+
+# A throwaway testnet key, generated on first use and gitignored. Nothing of
+# value is ever held by it.
+deployer_secret() {
+  if [ ! -f "$KEY_FILE" ]; then
+    echo "generating a throwaway testnet deployer key -> .deployer-secret" >&2
+    # `keys generate` writes the identity into the container's config dir,
+    # which dies with the container, so read it back out in the same run.
+    run_pinned --entrypoint sh "$BLDIMG" -c \
+      'stellar keys generate --as-secret ci-deployer >/dev/null 2>&1 && stellar keys secret ci-deployer' \
+      | tr -d '[:space:]' > "$KEY_FILE"
+    [ -s "$KEY_FILE" ] || { rm -f "$KEY_FILE"; echo "error: key generation failed" >&2; exit 1; }
+  fi
+  tr -d '[:space:]' < "$KEY_FILE"
+}
+
+# Deploy a Wasm file (path relative to the example directory) and echo the
+# resulting contract id. Used by deploy.sh for the real subject contract and by
+# the negative-fixture script for the deliberately broken ones.
+deploy_wasm() {
+  local rel_wasm="$1" secret public
+  secret="$(deployer_secret)"
+  public="$(run_pinned "$BLDIMG" keys public-key "$secret" | tr -d '[:space:]')"
+
+  echo "deployer: $public" >&2
+  curl -sS "$FRIENDBOT_URL?addr=$public" -o /dev/null || true
+
+  run_pinned \
+    -e "STELLAR_ACCOUNT=$secret" \
+    -e "STELLAR_RPC_URL=$RPC_URL" \
+    -e "STELLAR_NETWORK_PASSPHRASE=$NETWORK_PASSPHRASE" \
+    "$BLDIMG" \
+    contract deploy --wasm "/work/$rel_wasm" --quiet | tr -d '[:space:]'
 }

@@ -1,0 +1,18 @@
+{
+  "note": "Contracts deployed on purpose to make verify.sh's refusals demonstrable. Do not treat these as examples of correct contracts.",
+  "network": "testnet",
+  "fixtures": {
+    "noBuildMetadata": {
+      "contractId": "CAIDIR4HHZASOKDOOEBYTMHTAY2IA2X3TXEXMSKFPWXBG6CX2N25CQZB",
+      "wasmHash": "4635aa0a0f7c126c37d725e8eff553f5633cbabbed3fa33e51a7a86ae89a65ec",
+      "expect": "verify.sh exits 3 — no SEP-58 build fields recorded"
+    },
+    "sourceMismatch": {
+      "contractId": "CCEIPC6NMRJVUCV62SEBONLEIWOIAMMQEYHYS3TPOGB2IPPVUJAH4M34",
+      "wasmHash": "dbcfac2a8d2e5ee4ee92b8fa8ef3afc589d435e47e209b5403f41eda424c4432",
+      "recordedSourceSha256": "3f0417b78aead1366ab4b6e4ddf32fee69cb884b4352eb7e99db21b53aab7dd3",
+      "expect": "verify.sh exits 9 — archive matches source_sha256, rebuild does not match the deployed bytes"
+    }
+  },
+  "deployedAt": "2026-08-16T09:27:42Z"
+}
