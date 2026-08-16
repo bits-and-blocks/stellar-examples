@@ -1,2 +1,8 @@
 # Throwaway testnet deployer key created by scripts/deploy.sh. Never committed.
 .deployer-secret
+
+# Scratch directories: extracted source, verifier workspace, fixture builds.
+# All are rebuilt on demand from the committed archive.
+.build/
+.verify/
+.fixtures/
