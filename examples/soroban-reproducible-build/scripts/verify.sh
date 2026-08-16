@@ -60,7 +60,7 @@ done
 # script is otherwise entirely general — it reads the recipe out of whatever
 # contract it is pointed at.
 if [ -z "$CONTRACT_ID" ] && [ -f deployment.json ]; then
-  CONTRACT_ID="$(node -p "require('./deployment.json').contractId")"
+  CONTRACT_ID="$("$NODE" -p "require('./deployment.json').contractId")"
   echo "no contract id given, using the one in deployment.json"
 fi
 [ -n "$CONTRACT_ID" ] || usage
@@ -96,7 +96,7 @@ if ! META_JSON="$(run_pinned "$BLDIMG" contract info meta \
 fi
 
 set +e
-printf '%s' "$META_JSON" | node scripts/sep58-fields.mjs > "$WORK/fields.tsv" 2>"$WORK/fields.err"
+printf '%s' "$META_JSON" | "$NODE" scripts/sep58-fields.mjs > "$WORK/fields.tsv" 2>"$WORK/fields.err"
 fields_status=$?
 set -e
 

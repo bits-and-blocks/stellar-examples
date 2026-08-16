@@ -7,8 +7,15 @@ EXAMPLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../build.conf
 . "$EXAMPLE_DIR/build.conf"
 
-# Docker Desktop on Windows wants a Windows-style host path for -v, while MSYS
-# would otherwise rewrite container-side paths like "/source" into "C:\source".
+# On Windows these scripts land in one of two completely different shells:
+# Git Bash if you run them directly, or WSL if you run them through `npm run`
+# from PowerShell, because that is what `bash` resolves to there. They differ in
+# ways that break naive assumptions, so both are handled explicitly.
+#
+# Paths: Git Bash needs a Windows-style path for -v (and MSYS would otherwise
+# rewrite container-side paths like "/source" into "C:\source"). WSL paths such
+# as /mnt/c/... are understood by Docker Desktop as-is, as is a native Linux
+# path, so everything else passes through untouched.
 host_path() {
   if command -v cygpath >/dev/null 2>&1; then
     cygpath -m "$1" # Windows path, forward slashes
@@ -16,6 +23,30 @@ host_path() {
     printf '%s' "$1"
   fi
 }
+
+# Interpreter: WSL has the Windows Node install on PATH as node.exe, with no
+# bare `node`, so assuming `node` works is exactly the bug that makes
+# `npm run verify:sep58` fail from PowerShell while working from Git Bash.
+resolve_node() {
+  if [ -n "${npm_node_execpath:-}" ] && [ -x "${npm_node_execpath:-}" ]; then
+    printf '%s' "$npm_node_execpath"
+    return 0
+  fi
+  local candidate
+  for candidate in node node.exe; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! NODE="$(resolve_node)"; then
+  echo "error: could not find node (tried \$npm_node_execpath, node, node.exe)" >&2
+  echo "Install Node 20+ and make sure it is on PATH in this shell." >&2
+  exit 1
+fi
 
 # Utility container runs: the example directory at /work. Used for tasks that
 # are not the contract build itself (archiving, key handling).
@@ -66,11 +97,17 @@ run_sep58_build() {
     "$@"
 }
 
+# sha256sum is present in Git Bash, WSL and on CI; node is the fallback for
+# anywhere it is not (macOS ships shasum instead).
 sha256_of() {
-  node -e "
-    const {createHash}=require('crypto'),{readFileSync}=require('fs');
-    process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'));
-  " "$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    "$NODE" -e "
+      const {createHash}=require('crypto'),{readFileSync}=require('fs');
+      process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'));
+    " "$1"
+  fi
 }
 
 # Testnet, pinned in code. Nothing reads these from the environment, so this

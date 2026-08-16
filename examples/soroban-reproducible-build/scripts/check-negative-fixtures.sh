@@ -25,8 +25,8 @@ expect_exit() {
   fi
 }
 
-NO_META_ID="$(node -p "require('./negative-fixtures.json').fixtures.noBuildMetadata.contractId")"
-LYING_ID="$(node -p "require('./negative-fixtures.json').fixtures.sourceMismatch.contractId")"
+NO_META_ID="$("$NODE" -p "require('./negative-fixtures.json').fixtures.noBuildMetadata.contractId")"
+LYING_ID="$("$NODE" -p "require('./negative-fixtures.json').fixtures.sourceMismatch.contractId")"
 
 echo "verify.sh must refuse:"
 

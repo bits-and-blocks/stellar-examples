@@ -27,6 +27,11 @@ You need **Docker** and **Node 20+**. You do not need Rust, cargo, or the
 Stellar CLI — if the host could contribute to the build, a passing check would
 only tell you something about your own machine.
 
+On Windows the scripts run under either Git Bash or WSL, whichever `bash`
+resolves to in the shell you use — `npm run` from PowerShell lands in WSL, where
+Node is on PATH as `node.exe` rather than `node`. Both are handled; you should
+not have to care which one you are in.
+
 ```bash
 cd examples/soroban-reproducible-build
 npm install
