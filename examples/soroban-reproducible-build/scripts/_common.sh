@@ -7,6 +7,27 @@ EXAMPLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../build.conf
 . "$EXAMPLE_DIR/build.conf"
 
+# Fail early and legibly on a machine that is missing something, rather than
+# part-way through with whatever error the first missing tool happens to emit.
+# The scripts deliberately stay within bash 3.2 (what macOS still ships) so this
+# check is about the environment, not the shell.
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 && return 0
+  echo "error: '$1' is required but is not on PATH" >&2
+  [ -n "${2:-}" ] && echo "  $2" >&2
+  exit 1
+}
+
+require_cmd docker "Install Docker — every build in this example runs in a container."
+require_cmd curl
+require_cmd tar
+
+if ! docker info >/dev/null 2>&1; then
+  echo "error: Docker is installed but its daemon is not reachable" >&2
+  echo "  Start Docker Desktop (or dockerd) and try again." >&2
+  exit 1
+fi
+
 # On Windows these scripts land in one of two completely different shells:
 # Git Bash if you run them directly, or WSL if you run them through `npm run`
 # from PowerShell, because that is what `bash` resolves to there. They differ in

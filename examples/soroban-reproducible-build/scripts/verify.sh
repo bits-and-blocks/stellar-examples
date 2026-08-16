@@ -263,7 +263,11 @@ cp "$ARCHIVE" "$WORK/archive.tmp"
 run_pinned --entrypoint tar "$BLDIMG" $tar_flags \
   --file "/work/$WORK/archive.tmp" --directory "/work/$WORK/src"
 
-mapfile -t TOP_LEVEL < <(find "$WORK/src" -mindepth 1 -maxdepth 1 -type d)
+TOP_LEVEL=()
+while IFS= read -r d; do
+  [ -n "$d" ] || continue
+  TOP_LEVEL+=("$d")
+done < <(find "$WORK/src" -mindepth 1 -maxdepth 1 -type d)
 if [ "${#TOP_LEVEL[@]}" -ne 1 ]; then
   echo
   echo "❌ archive does not contain exactly one top-level directory"
@@ -301,7 +305,11 @@ if ! run_sep58_build "$SOURCE_DIR" "$BLDIMG_REC" "$TOOLCHAIN" \
   exit 8
 fi
 
-mapfile -t BUILT < <(find "$SOURCE_DIR/target/wasm32v1-none/release" -maxdepth 1 -name '*.wasm' 2>/dev/null)
+BUILT=()
+while IFS= read -r w; do
+  [ -n "$w" ] || continue
+  BUILT+=("$w")
+done < <(find "$SOURCE_DIR/target/wasm32v1-none/release" -maxdepth 1 -name '*.wasm' 2>/dev/null)
 if [ "${#BUILT[@]}" -ne 1 ]; then
   echo "❌ expected exactly one Wasm from the rebuild, found ${#BUILT[@]}"
   echo

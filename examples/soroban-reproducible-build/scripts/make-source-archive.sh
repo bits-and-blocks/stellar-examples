@@ -24,7 +24,11 @@ cd "$EXAMPLE_DIR"
 mkdir -p "$(dirname "$SOURCE_ARCHIVE")"
 
 # Tracked files only, paths relative to contract/.
-mapfile -t FILES < <(git ls-files contract | sed 's|^contract/||')
+FILES=()
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  FILES+=("$f")
+done < <(git ls-files contract | sed 's|^contract/||')
 if [ "${#FILES[@]}" -eq 0 ]; then
   echo "error: no tracked files under contract/ — commit the source first" >&2
   exit 1
