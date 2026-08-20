@@ -358,6 +358,74 @@ this repo move — and a [test](test/filters.test.ts) derives both from the asse
 and the network passphrase rather than trusting the literals, so a wrong-network
 config could not silently point at a contract that happens to exist.
 
+### Teaching it what the events mean
+
+The config decides which events are *stored*. [`src/decoders/`](src/decoders/)
+decides what they *say*, and it is the only place that knows:
+
+```ts
+// src/decoders/pool.ts
+export const registerPoolDecoders = (registry: DecoderRegistry) =>
+  registry.register(POOL_CONTRACT_ID, "deposit", (event) => ({
+    kind: "deposit",
+    summary: `${amount} into the pool`,
+    fields: { … },
+    notes: [],
+  }));
+
+// src/decoders/index.ts — the one line that turns it on
+registerPoolDecoders(registry);
+```
+
+Two files, both inside that directory. Everything downstream — the trace
+output, the recent list — consumes a `DecodedEvent` and never asks what kind
+it is.
+
+That claim is checked rather than promised. [A
+test](test/registry.test.ts) strips the comments out of every source file
+outside `src/decoders/` and asserts that none of them contains the words
+`transfer`, `mint`, `burn`, `clawback` or `approve`. If a token's vocabulary
+ever leaks into the ingest loop or a query, that test goes red and the repoint
+stops being a one-directory change before anyone is relying on it.
+
+Two decisions inside the registry are worth knowing about:
+
+- **A contract id may be `*`.** The obvious key is exact — this contract, this
+  event — and it works for a contract you deployed. It does not work at all for
+  the Stellar Asset Contract, which is not *a* contract: there is one per
+  asset, derived from the asset and the network passphrase, and testnet has
+  thousands of them. So the SAC decoders register under `*`, and prove which
+  contract they are looking at from the event itself. Exact keys are tried
+  first, so a specific contract can always override the general reading.
+- **A decoder may decline.** Any contract can emit an event named `transfer`
+  that has nothing to do with the token interface, and two of the committed
+  fixtures are exactly that — a one-topic `transfer` of a contract's own
+  design, and a three-topic `mint` whose last topic is an address where the
+  asset would be. Returning null hands the event back to be shown structurally.
+  Decoding it anyway would put a confident wrong sentence on the screen.
+
+### The asset is checked, not believed
+
+A four-topic transfer names its asset in the last topic, and any contract can
+put `USDC` there. The SAC's address is derived from the asset and the network
+passphrase, so the claim is settled by deriving it and comparing:
+
+```
+  transfer  9.2500000 XLM from GBRMG…RTUS to GAV6P…OU6O
+            emitted by native's Stellar Asset Contract, derived and matched
+```
+
+and when it does not match, the amount stops being formatted as a classic
+asset too — seven decimal places is a fact about a SAC of a classic asset, and
+once the contract is unidentified that fact is no longer in evidence:
+
+```
+  transfer  100000000000 XLM from GAIH3…ZNSR to GALE5…XAVO
+            the emitting contract is not native's Stellar Asset Contract (that
+            would be CDLZFC3…HGCYSC), so the asset name is this contract's
+            claim rather than a fact
+```
+
 ## Options
 
 ### `ingest`
@@ -378,6 +446,14 @@ config could not silently point at a contract that happens to exist.
 `--start-ledger` is consulted only when the database has no cursor yet, so
 leaving it in a restart command is harmless — an existing database always
 resumes from where it stopped.
+
+### `recent`
+
+```
+--db <path>              database file (default: trace.db)
+--limit <n>              how many transactions (default: 10)
+--hash-only              just the hashes, one per line
+```
 
 ### `trace`
 
@@ -415,11 +491,13 @@ x no transaction 00000000…00000000 on this RPC server.
 
 ## What this does not do
 
-- **Decode events by what they mean.** Ingest stores topics and values as
-  base64 XDR, and `trace` renders them structurally — a symbol is a symbol, an
-  address is an address. Knowing that `transfer` has a sender and a recipient,
-  and that a fourth topic names the asset, belongs to the decoder registry,
-  which is the next task in this track.
+- **Decode events it has no decoder for.** The registry covers the token
+  interface. Everything else is shown structurally — topics and value, as they
+  are — rather than guessed at. Adding a contract is
+  [two files in one directory](#teaching-it-what-the-events-mean).
+- **Decode on the way in.** Events are stored as the XDR they arrived as, and
+  decoded on the way out, every time. A decoder fixed next week reads the rows
+  ingested last week; a decoder that was wrong cost a query, not a re-ingest.
 - **Store what it traces.** `trace` reads one transaction from RPC and prints
   it. It never touches the database, and running it twice asks the network
   twice.
@@ -445,6 +523,13 @@ src/
   db.ts                the schema, and the page/cursor transaction
   ingest.ts            ** the loop, and everything it refuses to do **
   exit.ts              exit codes, shared by both commands
+  format.ts            stroops and addresses, for whoever has to show one
+  decoders/
+    registry.ts        ** (contract, topic[0]) -> a decoder. Knows no tokens **
+    sac.ts             the token interface: transfer, mint, burn, clawback,
+                       fee, approve — and the SAC derivation that checks them
+    types.ts           what a decoder is handed and must return
+    index.ts           the default registry: one line per decoder
   meta/
     decode.ts          ** resultMetaXdr -> a state progression **
     entries.ts         ledger entries described in words and formatted
@@ -452,6 +537,7 @@ src/
   bin/ingest.ts        the ingest command line
   bin/trace.ts         the trace command line
 scripts/
+  recent.ts            recent transactions, decoded out of the database
   check-restart.ts     kill it mid-run, restart, compare
 test/                  unit tests, no network — the loop runs against a
                        scripted server, and the decoder against real
@@ -464,5 +550,7 @@ test/                  unit tests, no network — the loop runs against a
 - [getTransaction](https://developers.stellar.org/docs/data/apis/rpc/api-reference/methods/getTransaction) — where `resultMetaXdr` comes from
 - [Ingest events published from a contract](https://developers.stellar.org/docs/build/guides/events/ingest)
 - [CAP-0067](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0067.md) — the event shapes, including classic operations emitting `transfer`
+- [Token interface](https://developers.stellar.org/docs/tokens/token-interface) · [Stellar Asset Contract](https://developers.stellar.org/docs/tokens/stellar-asset-contract) — what the decoders implement
+- [Token Transfer Processor](https://developers.stellar.org/docs/data/indexers/build-your-own/processors/token-transfer-processor) — SDF's Go implementation of these same semantics, and the reference for what the events mean
 - [Reconciling Stellar events](https://stellar.org/blog/developers/reconciling-stellar-events) — on the retention window and what lives outside it
 - [RPC data formats](https://developers.stellar.org/docs/data/apis/rpc/api-reference/structure/data-format) — `xdrFormat: "json"`, which is far easier to read while exploring
