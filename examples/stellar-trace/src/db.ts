@@ -197,13 +197,40 @@ export class TraceStore {
     return { inserted, duplicates: events.length - inserted };
   }
 
+  /**
+   * Record a range of ledgers this database will never hold.
+   *
+   * Merged with any range it overlaps or abuts, because a gap is an interval
+   * and two overlapping intervals are one hole, not two. Without this, an
+   * indexer restarted twice against a retention window that has moved on both
+   * times leaves three rows describing one gap with slightly different ends —
+   * which reads as three separate incidents to anyone looking later.
+   */
   recordGap(gap: Gap): void {
-    this.db
-      .prepare(
-        `INSERT OR IGNORE INTO ingest_gaps (from_ledger, to_ledger, reason, recorded_at)
-         VALUES (?, ?, ?, ?)`,
-      )
-      .run(gap.fromLedger, gap.toLedger, gap.reason, new Date().toISOString());
+    const merge = this.db.transaction((next: Gap) => {
+      const overlapping = this.db
+        .prepare<[number, number], { from_ledger: number; to_ledger: number }>(
+          `SELECT from_ledger, to_ledger FROM ingest_gaps
+            WHERE from_ledger <= ? + 1 AND to_ledger >= ? - 1`,
+        )
+        .all(next.toLedger, next.fromLedger);
+
+      const fromLedger = Math.min(next.fromLedger, ...overlapping.map((r) => r.from_ledger));
+      const toLedger = Math.max(next.toLedger, ...overlapping.map((r) => r.to_ledger));
+
+      for (const row of overlapping) {
+        this.db
+          .prepare(`DELETE FROM ingest_gaps WHERE from_ledger = ? AND to_ledger = ?`)
+          .run(row.from_ledger, row.to_ledger);
+      }
+      this.db
+        .prepare(
+          `INSERT OR REPLACE INTO ingest_gaps (from_ledger, to_ledger, reason, recorded_at)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(fromLedger, toLedger, next.reason, new Date().toISOString());
+    });
+    merge(gap);
   }
 
   gaps(): Gap[] {

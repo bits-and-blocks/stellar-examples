@@ -87,3 +87,18 @@ test("gaps are recorded once and read back in ledger order", () => {
   ]);
   store.close();
 });
+
+test("one hole described twice is stored as one gap", () => {
+  const store = openFresh("merge-gaps.db");
+  // What two restarts against a moving retention window actually produce:
+  // the same hole, ending a few ledgers further along each time.
+  store.recordGap({ fromLedger: 100, toLedger: 200, reason: "retention" });
+  store.recordGap({ fromLedger: 100, toLedger: 240, reason: "retention" });
+  store.recordGap({ fromLedger: 241, toLedger: 250, reason: "retention" });
+  assert.deepEqual(store.gaps(), [{ fromLedger: 100, toLedger: 250, reason: "retention" }]);
+
+  // A hole somewhere else stays its own.
+  store.recordGap({ fromLedger: 900, toLedger: 950, reason: "retention" });
+  assert.equal(store.gaps().length, 2);
+  store.close();
+});

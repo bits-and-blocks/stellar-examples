@@ -65,6 +65,16 @@ export class IngestError extends Error {
   }
 }
 
+/**
+ * `-32001 request exceeded processing limit threshold` — the server declining
+ * a request it judged too expensive. Retrying it unchanged is asking the same
+ * question, so the loop asks for less: a smaller page scans less and usually
+ * gets through. It climbs back toward the configured size afterwards, so one
+ * busy stretch does not slow the rest of the run down.
+ */
+const PAGE_LIMIT_REFUSED = -32001;
+const MIN_PAGE_LIMIT = 100;
+
 export const EXIT = {
   usage: 2,
   wrongNetwork: 3,
@@ -121,13 +131,14 @@ export async function ingest(options: IngestOptions): Promise<IngestSummary> {
   };
 
   let announcedCaughtUp = false;
+  let limit = config.pageLimit;
 
   while (!signal?.aborted) {
     let page;
     try {
       page = await rpc.getEvents({
         filters: config.filters,
-        limit: config.pageLimit,
+        limit,
         ...(cursor.cursor
           ? { cursor: cursor.cursor }
           : { startLedger: cursor.startLedger }),
@@ -136,6 +147,14 @@ export async function ingest(options: IngestOptions): Promise<IngestSummary> {
       // A request abandoned by the second interrupt. Nothing was committed,
       // so the database is still on the last cursor it stored.
       if (signal?.aborted) return { ...summary, stoppedBecause: "signal" };
+
+      if (error instanceof RpcError && error.code === PAGE_LIMIT_REFUSED) {
+        if (limit <= MIN_PAGE_LIMIT) throw error;
+        limit = Math.max(MIN_PAGE_LIMIT, Math.floor(limit / 2));
+        log.warn("the server refused that page size, asking for less", { limit });
+        continue;
+      }
+
       // The stored cursor has aged out from under us. Nothing can fetch those
       // ledgers now — not this program, not a different one — so the only
       // choices are to stop and say so, or to continue and record the hole.
@@ -146,7 +165,8 @@ export async function ingest(options: IngestOptions): Promise<IngestSummary> {
     }
 
     const cursorLedger = ledgerOf(page.cursor);
-    const pageWasFull = page.events.length >= config.pageLimit;
+    const pageWasFull = page.events.length >= limit;
+    limit = Math.min(config.pageLimit, limit * 2);
     const { events, cursor: storedCursor, storedLedger, reachedEnd } = truncateAtEnd(
       page.events,
       page.cursor,

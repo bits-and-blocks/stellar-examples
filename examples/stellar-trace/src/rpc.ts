@@ -79,6 +79,16 @@ export class RpcError extends Error {
   }
 
   /**
+   * Codes that mean "not now" rather than "not ever", and are worth asking
+   * again for. `-32001` is the server declining a request it judged too
+   * expensive — see `PAGE_LIMIT_REFUSED` in ingest.ts, which also makes the
+   * next ask cheaper instead of only slower.
+   */
+  get transient(): boolean {
+    return this.code === -32001 || this.code === -32603;
+  }
+
+  /**
    * The one error the ingest loop has to recognise rather than report.
    *
    * Ask for a ledger — or resume from a cursor — older than the RPC server's
@@ -167,9 +177,12 @@ export class TraceRpc {
       try {
         return await this.attempt<T>(method, body);
       } catch (error) {
-        // An RpcError is the server's considered answer. Asking again with the
-        // same arguments would get the same answer, so it goes straight up.
-        if (error instanceof RpcError || attempt >= maxAttempts) throw error;
+        // An RpcError is usually the server's considered answer, and asking
+        // again with the same arguments would get the same answer. The
+        // exceptions are the ones about load rather than about the request.
+        if ((error instanceof RpcError && !error.transient) || attempt >= maxAttempts) {
+          throw error;
+        }
         this.options.signal?.throwIfAborted();
         const waitMs = Math.min(30_000, 500 * 2 ** (attempt - 1));
         this.options.log.warn("rpc call failed, retrying", {

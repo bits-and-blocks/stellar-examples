@@ -17,6 +17,7 @@ import { TraceStore } from "../src/db.js";
 import { EXIT, IngestError, ingest } from "../src/ingest.js";
 import { createLogger } from "../src/log.js";
 import { NETWORK_PASSPHRASE } from "../src/network.js";
+import { RpcError } from "../src/rpc.js";
 import type { EventSource, GetEventsRequest, GetEventsResponse, RawEvent } from "../src/rpc.js";
 import { cursorForLedger } from "../src/toid.js";
 
@@ -166,6 +167,38 @@ test("a database resumes from its cursor and ignores --start-ledger", async () =
   await ingest({ config, store: again, rpc: second.source, log, startLedger: 912_345, once: true });
   assert.deepEqual(second.requests[0], { cursor: cursorForLedger(1_000_000) });
   again.close();
+});
+
+test("a page the server calls too expensive is retried smaller", async () => {
+  const { source } = scripted([{ cursor: cursorForLedger(1_000_000) }]);
+  const asked: Array<number | undefined> = [];
+  let refusals = 2;
+
+  const throttling: EventSource = {
+    ...source,
+    getEvents: async (request) => {
+      asked.push(request.limit);
+      if (refusals-- > 0) {
+        throw new RpcError(-32001, "request exceeded processing limit threshold");
+      }
+      return source.getEvents(request);
+    },
+  };
+
+  const db = store("throttled");
+  const summary = await ingest({
+    config,
+    store: db,
+    rpc: throttling,
+    log,
+    startLedger: 950_000,
+    once: true,
+  });
+
+  // Halved per refusal, rather than the same ask repeated until it gives up.
+  assert.deepEqual(asked, [config.pageLimit, config.pageLimit / 2, config.pageLimit / 4]);
+  assert.equal(summary.stoppedBecause, "caught-up");
+  db.close();
 });
 
 test("a mainnet passphrase stops it before anything is written", async () => {

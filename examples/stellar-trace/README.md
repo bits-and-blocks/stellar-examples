@@ -130,6 +130,13 @@ matchers and five contract ids per filter, `limit` at most 10,000 — are checke
 in [`src/filters.ts`](src/filters.ts) before the first request, so a bad config
 fails on startup naming the limit instead of mid-run with `-32602`.
 
+One limit cannot be checked up front, because it depends on how busy the
+server is rather than on the request: `-32001 request exceeded processing limit
+threshold`, which a full 10,000-event page over a wide scan window does provoke
+in practice. Retrying that unchanged is asking the same question, so the loop
+halves the page size instead, and climbs back toward the configured size once
+the server is answering again.
+
 ### There is no backfill, so this database *is* the history
 
 RPC retains a rolling window — 120,960 ledgers, about seven days, on the
