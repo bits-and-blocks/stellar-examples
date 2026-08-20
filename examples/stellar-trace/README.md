@@ -37,8 +37,12 @@ npm run ingest -- --start-ledger latest-3000 --once
 ```
 
 That is 11,002 transfers, mints and burns from the last four hours of testnet,
-in `trace.db`. Drop `--once` and it keeps polling; Ctrl-C once and it finishes
-the page it is on and tells you where it stopped.
+in `trace.db`. Drop `--once` and it keeps polling.
+
+Ctrl-C once and it finishes the page in flight, then says where it stopped —
+the tidy stop. Ctrl-C again and it abandons the request instead of waiting for
+it. Neither is more correct than the other: both leave the database on a
+committed cursor, and the next run resumes from it.
 
 The same lines are JSON when stdout is not a terminal, so `npm run ingest |
 jq -c 'select(.msg == "page")'` is a progress table and nothing needed a
@@ -151,7 +155,8 @@ happened".
 ## No gap, no duplicates
 
 ```bash
-npm run check:restart
+npm test              # the unit tests, no network
+npm run check:restart # the real thing, against testnet
 ```
 
 ```
@@ -273,7 +278,8 @@ resumes from where it stopped.
 
 | Exit | Meaning |
 | --- | --- |
-| `0` | reached `--end-ledger`, caught up under `--once`, or interrupted cleanly |
+| `0` | reached `--end-ledger`, or caught up under `--once` |
+| `130` | interrupted |
 | `2` | usage or config error, including a start ledger outside retention |
 | `3` | the RPC server is not testnet, or the database is not |
 | `4` | history aged out while the indexer was stopped, and no `--acknowledge-gap` |
@@ -311,7 +317,9 @@ src/
   bin/ingest.ts        the command line
 scripts/
   check-restart.ts     kill it mid-run, restart, compare
-test/                  unit tests, no network
+test/                  unit tests, no network — the loop runs against a
+                       scripted server, so the cases that are awkward to
+                       provoke on a live network are still covered
 ```
 
 ## References

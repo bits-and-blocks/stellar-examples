@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Index Stellar contract events into SQLite — a resumable getEvents ingest loop that stores raw XDR.",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "//": "`build` typechecks rather than emitting: nothing here is published, and the repo's generic matrix runs `npm run build --if-present`, so this is where a type error gets caught in CI.",
     "build": "tsc --noEmit",
