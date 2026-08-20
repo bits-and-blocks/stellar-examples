@@ -7,6 +7,7 @@
  * testnet.
  */
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -119,6 +120,23 @@ test("replay refuses the requests a real server refuses", async () => {
   const missing = await rpc.getTransaction("0".repeat(64));
   assert.equal(missing.status, "NOT_FOUND");
   assert.equal(missing.oldestLedger, range.startLedger);
+});
+
+test("the demo itself runs, which is what --offline is for", { timeout: 120_000 }, () => {
+  // Everything above exercises the offline path in this process. This runs the
+  // commands as a person would — three child processes, each with fetch
+  // replaced by a refusal before the CLI loads — which is the only way to
+  // cover the --offline flag and the loader that unplugs the network.
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", join(ROOT, "scripts", "demo.ts"), "--db", join(dir, "demo.db")],
+    { cwd: ROOT, encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Ingest the captured ledgers/);
+  assert.match(result.stdout, /XLM balance: .+->/, "a trace with a balance moving");
+  assert.match(result.stdout, /network unplugged/);
 });
 
 test("replaying against different filters is refused, not answered quietly", async () => {

@@ -14,12 +14,20 @@
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 const HERE = fileURLToPath(new URL("..", import.meta.url));
 // A file:// URL rather than a path: `--import` requires one for an absolute
 // location, and a Windows path is not one.
 const NO_NETWORK = new URL("./no-network.ts", import.meta.url).href;
-const DB = "demo.db";
+const { values } = parseArgs({
+  options: {
+    // Overridable so a test can run the demo without writing into the project
+    // it is testing.
+    db: { type: "string", default: "demo.db" },
+  },
+});
+const DB = values.db;
 
 const run = (title: string, args: string[]): string => {
   console.log(`\n\x1b[1m${title}\x1b[0m`);
