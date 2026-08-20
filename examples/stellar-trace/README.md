@@ -1,13 +1,18 @@
 # stellar-trace
 
-An indexer over Stellar contract events. It polls `getEvents` from a ledger you
-choose, writes the events into SQLite **undecoded**, and keeps a cursor so that
-killing it and starting it again produces the same database as never having
-stopped.
+An indexer over Stellar contract events, and a reader for the state each one
+moved.
 
-This directory is the ingest half. Decoding events, reconstructing state from
-transaction meta, and the proof view that renders it are later tasks in the
-same track; nothing here knows what a `transfer` is, and that is deliberate —
+**`ingest`** polls `getEvents` from a ledger you choose, writes the events into
+SQLite **undecoded**, and keeps a cursor so that killing it and starting it
+again produces the same database as never having stopped.
+
+**`trace <tx-hash>`** takes one transaction and prints what it did to the
+ledger — every entry it touched, and what that entry held before and after.
+
+The two are joined by a transaction hash and nothing else: the indexer says
+*that* a transfer happened, and the trace says what the ledger looked like on
+either side of it. Neither knows what a `transfer` means, which is deliberate —
 see [Pointing it somewhere else](#pointing-it-somewhere-else).
 
 | | |
@@ -15,6 +20,7 @@ see [Pointing it somewhere else](#pointing-it-somewhere-else).
 | Network | testnet, pinned in [`src/network.ts`](src/network.ts) |
 | Default subject | the XLM and testnet-USDC Stellar Asset Contracts |
 | Storage | one SQLite file, raw base64 XDR |
+| Transaction meta | `TransactionMeta` v4 (protocol 23+), decoded locally |
 | Verified against | `soroban-testnet.stellar.org`, protocol 27, August 2026 |
 
 ## Run it
@@ -48,7 +54,76 @@ The same lines are JSON when stdout is not a terminal, so `npm run ingest |
 jq -c 'select(.msg == "page")'` is a progress table and nothing needed a
 `--verbose` flag.
 
-## Three things that make this harder than it looks
+## Tracing one transaction
+
+```bash
+npm run trace -- 476eb1bb01e3342ed6acaa5228f4e4c27f231eb5917872d71c0012e0eeafde8f
+```
+
+```
+transaction 476eb1bb01e3342ed6acaa5228f4e4c27f231eb5917872d71c0012e0eeafde8f
+  SUCCESS (Success) · ledger 4245730 · 2026-08-20T18:37:34.000Z
+  source GBRMGCKG7U2CX7LIWHP4SDSAO7OGXQDRTEJDBMPE27E5X4O73OV3RTUS · fee 100 stroops · meta v4
+
+fee and sequence number, before any operation ran
+  event  fee GBRMGCKG7U2CX7LIWHP4SDSAO7OGXQDRTEJDBMPE27E5X4O73OV3RTUS  =  100
+         from CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+  ~ account GBRMG…RTUS  (updated)
+      sequence: 18235262907711489  ->  18235262907711490
+      sequence bumped in ledger: 4245729  ->  4245730
+
+operation 0 · payment
+  event  transfer GBRMGCKG…RTUS GAV6PB6T…OU6O native  =  {amount: 92500000, to_muxed_id: "note 2"}
+         from CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+  ~ account GBRMG…RTUS  (updated)
+      XLM balance: 9,981.9999800 (99819999800)  ->  9,972.7499800 (99727499800)   -92500000
+  ~ account GAV6P…OU6O  (updated)
+      XLM balance: 10,018.0000000 (100180000000)  ->  10,027.2500000 (100272500000)   +92500000
+```
+
+Both sides of a transfer, before and after, from a transaction hash. Add
+`--full` for every field of every entry rather than only the ones that changed,
+or `--json` for the same structure as data.
+
+### Where that state comes from, since it cannot be looked up
+
+There is **no historical ledger-entry fetch**. `getLedgerEntries` answers with
+current state only, so "what did this account hold last Tuesday" is not a
+question any RPC method takes. It is easy to assume otherwise and design a
+proof view around a call that does not exist.
+
+What does exist is the transaction's own meta. `getTransaction` returns
+`resultMetaXdr`, and inside it every entry the transaction touched appears
+twice — as it was and as it became. So the state is not looked up, it is read
+back out of the record the network already wrote. That record is also the more
+convincing artifact: it is what the validators agreed on, not a later query
+against a node's current view.
+
+Three things about that encoding cost time if you meet them by surprise:
+
+- **A change list is flat, not paired.** An update is two entries — a
+  `LEDGER_ENTRY_STATE` carrying the old value, then a `LEDGER_ENTRY_UPDATED`
+  carrying the new one. A removal is a `STATE` and a `REMOVED` holding only a
+  key. A creation stands alone. [`decode.ts`](src/meta/decode.ts) pairs them by
+  entry identity rather than by adjacency, so a `STATE` with no partner cannot
+  quietly become the "before" of the next entry along.
+- **The fee is not in there.** Look at the numbers above: the sender loses
+  exactly the 9.25 XLM of the payment, not 9.25 plus the 100-stroop fee. Fee
+  charging happens in its own phase, whose entry changes live in the *ledger
+  close* meta rather than the transaction's. All the transaction meta carries is
+  the CAP-67 `fee` event — and, for a Soroban transaction, a second one after
+  the operations that is *negative*, refunding the resource fee that was
+  reserved but not spent.
+- **"Updated" does not mean "changed".** The meta records an update for every
+  entry a transaction *touched*. A fee bump's inner source account is written
+  back byte for byte identical, and the trace says so rather than implying that
+  something changed which it could not show you.
+
+Protocol 23 moved this to `TransactionMeta` **v4**, which is what testnet
+returns today; v1 through v3 are still decoded, since an archival RPC can serve
+older ledgers.
+
+## Three things about `getEvents` that make ingest harder than it looks
 
 Each of these was measured against testnet rather than read off a page. The
 `curl` next to each one re-measures it, because the answers are properties of
@@ -159,6 +234,15 @@ which records the range in an `ingest_gaps` row so that the proof view can say
 "we never saw it" instead of showing a blank result that reads as "it never
 happened".
 
+The window applies to transactions too, and on this endpoint it is the same
+window: a `getTransaction` for a transaction at `oldestLedger + 50` still comes
+back with its full meta, so anything the indexer holds can also be traced.
+That is a property of how the server is configured rather than a guarantee —
+`transactionRetentionWindow` is a separate setting from the event one, and a
+provider is free to keep transactions for less time than events. Worth checking
+against whichever endpoint you point at, since a proof view built on the
+assumption would fail only for the oldest hashes.
+
 ## No gap, no duplicates
 
 ```bash
@@ -266,6 +350,8 @@ config could not silently point at a contract that happens to exist.
 
 ## Options
 
+### `ingest`
+
 ```
 --db <path>              database file (default: trace.db)
 --config <path>          filter config (default: trace.config.json)
@@ -283,23 +369,50 @@ config could not silently point at a contract that happens to exist.
 leaving it in a restart command is harmless — an existing database always
 resumes from where it stopped.
 
+### `trace`
+
+```
+<tx-hash>                the transaction to read, 64 hex characters
+--full                   every field of every entry, not only what changed
+--json                   the decoded structure, for piping somewhere else
+--config <path>          where the RPC url comes from
+```
+
+### Exit codes, shared by both
+
 | Exit | Meaning |
 | --- | --- |
-| `0` | reached `--end-ledger`, or caught up under `--once` |
+| `0` | done — reached `--end-ledger`, caught up under `--once`, or traced |
 | `130` | interrupted |
 | `2` | usage or config error, including a start ledger outside retention |
 | `3` | the RPC server is not testnet, or the database is not |
 | `4` | history aged out while the indexer was stopped, and no `--acknowledge-gap` |
 | `5` | the filters changed under an existing database |
+| `6` | no such transaction on this RPC server |
 | `1` | anything unexpected, with a stack |
+
+A hash the server has never heard of and a hash whose ledger has aged out are
+the same `NOT_FOUND` on the wire, so `trace` prints the window alongside the
+refusal and leaves the reader to tell which they are looking at:
+
+```
+x no transaction 00000000…00000000 on this RPC server.
+
+  It holds ledgers 4125436 to 4246395. A transaction older than
+  ledger 4125436 is not missing — it is outside the window, and no RPC
+  method will return it. A newer one may not have been applied yet.
+```
 
 ## What this does not do
 
-- **Decode anything.** Topics and values go in as base64 XDR and come out as
-  base64 XDR. The decoder registry is the next task in this track.
-- **Read transaction meta.** The before/after ledger entries behind a transfer
-  come from `getTransaction`'s `resultMetaXdr`, a different endpoint and a
-  different task.
+- **Decode events by what they mean.** Ingest stores topics and values as
+  base64 XDR, and `trace` renders them structurally — a symbol is a symbol, an
+  address is an address. Knowing that `transfer` has a sender and a recipient,
+  and that a fourth topic names the asset, belongs to the decoder registry,
+  which is the next task in this track.
+- **Store what it traces.** `trace` reads one transaction from RPC and prints
+  it. It never touches the database, and running it twice asks the network
+  twice.
 - **Reach further back than the RPC window.** Nothing can, over RPC. An
   archival provider or a data lake is the answer to that question, and pointing
   `rpcUrl` at one is supported — the ingest would simply have more ledgers to
@@ -317,21 +430,28 @@ src/
   network.ts           testnet passphrase and the RPC's own limits, pinned
   filters.ts           the topic DSL, encoding, and the limit checks
   config.ts            loading and validating trace.config.json
-  rpc.ts               getEvents/getHealth/getNetwork over JSON-RPC
+  rpc.ts               getEvents/getTransaction/getHealth over JSON-RPC
   toid.ts              reading the ledger out of an event id or cursor
   db.ts                the schema, and the page/cursor transaction
   ingest.ts            ** the loop, and everything it refuses to do **
-  bin/ingest.ts        the command line
+  exit.ts              exit codes, shared by both commands
+  meta/
+    decode.ts          ** resultMetaXdr -> a state progression **
+    entries.ts         ledger entries described in words and formatted
+    render.ts          the decoded transaction as text
+  bin/ingest.ts        the ingest command line
+  bin/trace.ts         the trace command line
 scripts/
   check-restart.ts     kill it mid-run, restart, compare
 test/                  unit tests, no network — the loop runs against a
-                       scripted server, so the cases that are awkward to
-                       provoke on a live network are still covered
+                       scripted server, and the decoder against real
+                       transactions committed under test/fixtures
 ```
 
 ## References
 
 - [getEvents](https://developers.stellar.org/docs/data/apis/rpc/api-reference/methods/getEvents) — the endpoint, its pagination, and its limits
+- [getTransaction](https://developers.stellar.org/docs/data/apis/rpc/api-reference/methods/getTransaction) — where `resultMetaXdr` comes from
 - [Ingest events published from a contract](https://developers.stellar.org/docs/build/guides/events/ingest)
 - [CAP-0067](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0067.md) — the event shapes, including classic operations emitting `transfer`
 - [Reconciling Stellar events](https://stellar.org/blog/developers/reconciling-stellar-events) — on the retention window and what lives outside it
