@@ -85,6 +85,16 @@ Both sides of a transfer, before and after, from a transaction hash. Add
 `--full` for every field of every entry rather than only the ones that changed,
 or `--json` for the same structure as data.
 
+**That hash stops working about a week after this was written**, for the reason
+the next section is about, and no README can promise otherwise. Any recent
+testnet transfer works, and the indexer is one way to find one — this is the
+only place the two commands meet:
+
+```bash
+npm run ingest -- --start-ledger latest-200 --once
+npm run trace -- "$(sqlite3 -noheader trace.db   'SELECT tx_hash FROM events ORDER BY ledger DESC LIMIT 1;')"
+```
+
 ### Where that state comes from, since it cannot be looked up
 
 There is **no historical ledger-entry fetch**. `getLedgerEntries` answers with
