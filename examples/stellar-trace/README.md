@@ -12,8 +12,12 @@ ledger — every entry it touched, and what that entry held before and after.
 
 The two are joined by a transaction hash and nothing else: the indexer says
 *that* a transfer happened, and the trace says what the ledger looked like on
-either side of it. Neither knows what a `transfer` means, which is deliberate —
-see [Pointing it somewhere else](#pointing-it-somewhere-else).
+either side of it. Neither knows what a `transfer` means — that lives in
+[one directory of decoders](#teaching-it-what-the-events-mean), which is what
+makes pointing this at another contract cheap.
+
+Both run against a committed slice of testnet with **`npm run demo`**, which
+needs no network and cannot use one.
 
 | | |
 | --- | --- |
@@ -21,6 +25,7 @@ see [Pointing it somewhere else](#pointing-it-somewhere-else).
 | Default subject | the XLM and testnet-USDC Stellar Asset Contracts |
 | Storage | one SQLite file, raw base64 XDR |
 | Transaction meta | `TransactionMeta` v4 (protocol 23+), decoded locally |
+| Offline | `fixtures/testnet-slice`, whole responses as captured |
 | Verified against | `soroban-testnet.stellar.org`, protocol 27, August 2026 |
 
 ## Run it
@@ -53,6 +58,91 @@ committed cursor, and the next run resumes from it.
 The same lines are JSON when stdout is not a terminal, so `npm run ingest |
 jq -c 'select(.msg == "page")'` is a progress table and nothing needed a
 `--verbose` flag.
+
+## With the network unplugged
+
+```bash
+npm run demo
+```
+
+Ingests a committed slice of testnet into a fresh database, lists what it
+holds, and traces one transaction down to the ledger entries it moved — all
+from `fixtures/`, none of it from a server.
+
+The interesting part is *how* it is offline. Each step is spawned with
+[`scripts/no-network.ts`](scripts/no-network.ts) imported ahead of it, which
+replaces `fetch` with something that throws. Everything this example could use
+to reach the network goes through `fetch`, so a green demo is not evidence that
+testnet happened to be up — it is evidence that nothing asked for it. Run the
+online path under the same loader and it fails immediately, which is how that
+guard is known to work.
+
+```
+1. Ingest the captured ledgers
+$ src/bin/ingest.ts --offline --db demo.db --once --log text
+
+  offline  fixtures=fixtures/testnet-slice
+  rpc  protocol=27 status=healthy oldestLedger=4247683 latestLedger=4247802
+  page  events=317 inserted=317 throughLedger=4247802 latestLedger=4247802 behind=0
+
+2. What the database holds
+  4247802   2026-08-20T21:30:36Z   8b47dd2751e689f978c5de1824d63abbe3fd086b4d2c6abe0af1ebefefd758d0
+    transfer  109.9586000 USDC from CDX3W…U2RO to GAV6T…V3QT
+    transfer  110.0318000 USDC from GAV6T…V3QT to CDX3W…U2RO
+
+3. Trace one of them
+  transfer  2.0000000 XLM from GB5FC…RLCH to GBTOR…JJZV
+            emitted by native's Stellar Asset Contract, derived and matched
+  ~ account GB5FC…RLCH  (updated)
+      XLM balance: 10,606.4939200  ->  10,604.4939200   -20000000
+  ~ account GBTOR…JJZV  (updated)
+      XLM balance: 9,597.4914300  ->  9,599.4914300   +20000000
+```
+
+Both commands take `--offline` on their own, so the fixture is somewhere to
+work from rather than only a demo:
+
+```bash
+npm run ingest -- --offline --db demo.db --once
+npm run trace -- --offline <tx-hash>
+```
+
+### Capturing a new one
+
+```bash
+npm run capture -- --ledgers 200 --transactions 25
+```
+
+Whole `getEvents` responses, and the `getTransaction` results for the
+transactions they name, written to `fixtures/testnet-slice/` exactly as the
+server sent them. Nothing is decoded or reshaped on the way in, so a fixture is
+evidence rather than a summary — and it keeps working long after its ledgers
+have left the RPC's seven-day window, which is the whole reason the demo uses
+one.
+
+Recapture when the slice stops being interesting. Nothing breaks when you
+don't.
+
+### Why the paging is re-derived rather than replayed
+
+A fixture holds real responses, but replay does not hand them back in the order
+they were recorded. It re-derives the two behaviours the loop depends on — a
+cursor that is exclusive and advances across ledgers that matched nothing, and
+a scan that stops after 10,000 ledgers — and serves the captured events through
+them.
+
+That is a deliberate line. A recorded request-and-response transcript can only
+answer the questions that were asked when it was recorded: change `--limit` and
+it has nothing to say, and an offline run would stop exercising the cursor
+logic that everything here rests on. [A test](test/offline.test.ts) ingests the
+same fixture with a limit of 7, takes 46 pages to do what the capture did in
+one, and ends with the same events in the database.
+
+What replay does *not* do is invent anything. It refuses a ledger outside the
+captured range in the same words the server uses, returns `NOT_FOUND` with that
+range for a hash it does not hold, and refuses outright to serve a fixture
+captured with different filters — because that would look like a quiet network
+rather than a mismatch.
 
 ## Tracing one transaction
 
@@ -440,12 +530,30 @@ once the contract is unidentified that fact is no longer in evidence:
 --poll-interval <ms>     wait between polls once caught up (default: 5000)
 --limit <n>              events per request, at most 10000
 --acknowledge-gap        continue past ledgers that aged out of retention
+--offline                read a captured fixture instead of the network
+--fixtures <dir>         which fixture (default: fixtures/testnet-slice)
 --log <text|json>        default: text on a terminal, json otherwise
 ```
 
 `--start-ledger` is consulted only when the database has no cursor yet, so
 leaving it in a restart command is harmless — an existing database always
-resumes from where it stopped.
+resumes from where it stopped. Its default differs by mode: live, an indexer
+started now should follow the network from now, so it is `latest`; offline, the
+fixture is the whole world and there is no reason to start at the end of it, so
+it is `oldest`.
+
+### `capture` and `demo`
+
+```
+npm run demo                     the whole stack, offline, network unplugged
+
+npm run capture -- [options]
+  --ledgers <n>            how many ledgers to capture (default: 200)
+  --transactions <n>       how many to fetch meta for (default: 25)
+  --start-ledger <n>       where to start (default: back from the tip)
+  --out <dir>              where to write (default: fixtures/testnet-slice)
+  --name <name>            what to call it in the manifest
+```
 
 ### `recent`
 
@@ -461,6 +569,8 @@ resumes from where it stopped.
 <tx-hash>                the transaction to read, 64 hex characters
 --full                   every field of every entry, not only what changed
 --json                   the decoded structure, for piping somewhere else
+--offline                read a captured fixture instead of the network
+--fixtures <dir>         which fixture (default: fixtures/testnet-slice)
 --config <path>          where the RPC url comes from
 ```
 
@@ -501,6 +611,10 @@ x no transaction 00000000…00000000 on this RPC server.
 - **Store what it traces.** `trace` reads one transaction from RPC and prints
   it. It never touches the database, and running it twice asks the network
   twice.
+- **Pretend a fixture is the network.** Offline, `latestLedger` is the end of
+  the capture and nothing exists past it. That is what lets the loop reach
+  "caught up" instead of chasing a tip it can never see, and it is why an
+  offline database is honest about covering a small range.
 - **Reach further back than the RPC window.** Nothing can, over RPC. An
   archival provider or a data lake is the answer to that question, and pointing
   `rpcUrl` at one is supported — the ingest would simply have more ledgers to
@@ -530,14 +644,22 @@ src/
                        fee, approve — and the SAC derivation that checks them
     types.ts           what a decoder is handed and must return
     index.ts           the default registry: one line per decoder
+  offline/
+    fixtures.ts        what a captured slice looks like on disk
+    replay.ts          ** a fixture, served as if it were an RPC server **
   meta/
     decode.ts          ** resultMetaXdr -> a state progression **
     entries.ts         ledger entries described in words and formatted
     render.ts          the decoded transaction as text
   bin/ingest.ts        the ingest command line
   bin/trace.ts         the trace command line
+fixtures/
+  testnet-slice/       a committed capture: whole responses, untouched
 scripts/
   recent.ts            recent transactions, decoded out of the database
+  capture.ts           record a slice of testnet into fixtures/
+  demo.ts              the whole stack, offline
+  no-network.ts        replaces fetch with a refusal, imported by the demo
   check-restart.ts     kill it mid-run, restart, compare
 test/                  unit tests, no network — the loop runs against a
                        scripted server, and the decoder against real
