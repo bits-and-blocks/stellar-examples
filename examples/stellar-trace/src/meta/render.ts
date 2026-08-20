@@ -82,10 +82,25 @@ const renderPhase = (step: Step): string => {
   }
 };
 
-const renderEvent = (event: TraceEvent): string[] => [
-  `  event  ${event.topics.join(" ")}  =  ${event.value}` +
-    (event.contractId ? `\n         from ${event.contractId}` : ""),
-];
+/**
+ * A decoded event reads as a sentence; an undecoded one reads as what it is.
+ *
+ * The undecoded form is not a failure state — most contracts on the network
+ * have no decoder here — so it gets the same prominence, just without the
+ * claim that anything understood it.
+ */
+function renderEvent(event: TraceEvent): string[] {
+  const lines: string[] = [];
+
+  if (event.decoded) {
+    lines.push(`  ${event.decoded.kind.padEnd(6)}  ${event.decoded.summary}`);
+    for (const note of event.decoded.notes) lines.push(`          ${note}`);
+  } else {
+    lines.push(`  event   ${event.topics.join(" ")}  =  ${event.value}`);
+  }
+  if (event.contractId) lines.push(`          from ${event.contractId}`);
+  return lines;
+}
 
 function renderChange(change: EntryChange, options: RenderOptions): string[] {
   const lines: string[] = [];

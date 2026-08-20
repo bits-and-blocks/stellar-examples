@@ -9,7 +9,10 @@
  */
 import { parseArgs } from "node:util";
 
+import { xdr } from "@stellar/stellar-sdk";
+
 import { TraceStore } from "../src/db.js";
+import { decoders } from "../src/decoders/index.js";
 
 const { values } = parseArgs({
   options: {
@@ -35,11 +38,22 @@ try {
     for (const transaction of transactions) console.log(transaction.txHash);
   } else {
     console.log("");
-    console.log("  ledger     closed                 events   transaction");
     for (const tx of transactions) {
-      console.log(
-        `  ${tx.ledger}   ${tx.ledgerClosedAt}   ${String(tx.events).padStart(6)}   ${tx.txHash}`,
-      );
+      console.log(`  ${tx.ledger}   ${tx.ledgerClosedAt}   ${tx.txHash}`);
+      // Decoded here, from the XDR the ingest stored, by the same registry the
+      // trace command uses. Nothing was decoded on the way in.
+      for (const event of store.eventsForTransaction(tx.txHash)) {
+        const decoded = decoders.decode({
+          contractId: event.contractId,
+          topics: event.topicsXdr.map((topic) => xdr.ScVal.fromXDR(topic, "base64")),
+          data: xdr.ScVal.fromXDR(event.valueXdr, "base64"),
+        });
+        console.log(
+          decoded
+            ? `    ${decoded.kind.padEnd(9)} ${decoded.summary}`
+            : `    ${"(no decoder)".padEnd(9)} ${event.contractId ?? "system event"}`,
+        );
+      }
     }
     console.log("");
     console.log(`  npm run trace -- ${transactions[0]?.txHash}`);
