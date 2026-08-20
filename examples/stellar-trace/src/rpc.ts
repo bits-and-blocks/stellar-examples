@@ -41,6 +41,24 @@ export type GetEventsResponse = {
   oldestLedgerCloseTime: string;
 };
 
+/** @see https://developers.stellar.org/docs/data/apis/rpc/api-reference/methods/getTransaction */
+export type GetTransactionResponse = {
+  status: "SUCCESS" | "FAILED" | "NOT_FOUND";
+  txHash: string;
+  latestLedger: number;
+  oldestLedger: number;
+  latestLedgerCloseTime: string;
+  oldestLedgerCloseTime: string;
+  applicationOrder?: number;
+  feeBump?: boolean;
+  /** base64 XDR, all three. Decoded locally rather than by the server. */
+  envelopeXdr?: string;
+  resultXdr?: string;
+  resultMetaXdr?: string;
+  ledger?: number;
+  createdAt?: string;
+};
+
 export type GetHealthResponse = {
   status: string;
   latestLedger: number;
@@ -60,6 +78,12 @@ export type EventSource = {
     request: GetEventsRequest & { filters: RpcFilter[]; limit?: number },
   ): Promise<GetEventsResponse>;
   getHealth(): Promise<GetHealthResponse>;
+  getNetwork(): Promise<{ passphrase: string; protocolVersion: number }>;
+};
+
+/** What the trace command needs from a server. */
+export type TransactionSource = {
+  getTransaction(hash: string): Promise<GetTransactionResponse>;
   getNetwork(): Promise<{ passphrase: string; protocolVersion: number }>;
 };
 
@@ -157,6 +181,15 @@ export class TraceRpc {
   }
 
   getHealth = (): Promise<GetHealthResponse> => this.call<GetHealthResponse>("getHealth");
+
+  /**
+   * Note the absence of `xdrFormat: "json"`. The server will happily decode
+   * the meta for us, and reading `resultMetaJson` while exploring is much
+   * easier than reading base64 — but a trace that depends on the server having
+   * decoded it is a trace of the server's opinion. The XDR is decoded here.
+   */
+  getTransaction = (hash: string): Promise<GetTransactionResponse> =>
+    this.call<GetTransactionResponse>("getTransaction", { hash });
 
   getNetwork = (): Promise<{ passphrase: string; protocolVersion: number }> =>
     this.call("getNetwork");
