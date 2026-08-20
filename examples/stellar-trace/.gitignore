@@ -2,3 +2,6 @@
 *.db
 *.db-shm
 *.db-wal
+
+# The demo's database, rebuilt by `npm run demo` from the committed fixture.
+demo.db

@@ -13,7 +13,9 @@ import { SchemaError, TraceStore } from "../db.js";
 import { FilterError } from "../filters.js";
 import { createLogger, type LogFormat } from "../log.js";
 import { EXIT, IngestError, ingest, type StartLedger } from "../ingest.js";
-import { TraceRpc } from "../rpc.js";
+import { DEFAULT_FIXTURE_DIR, FixtureError, loadFixture } from "../offline/fixtures.js";
+import { OfflineRpc } from "../offline/replay.js";
+import { TraceRpc, type EventSource } from "../rpc.js";
 
 const USAGE = `
 stellar-trace ingest — poll getEvents into SQLite, resumably
@@ -31,6 +33,8 @@ stellar-trace ingest — poll getEvents into SQLite, resumably
   --limit <n>              events per request, at most 10000
   --acknowledge-gap        continue past ledgers that aged out of the RPC's
                            retention window, recording the gap
+  --offline                read a captured fixture instead of the network
+  --fixtures <dir>         which fixture (default: ${DEFAULT_FIXTURE_DIR})
   --log <text|json>        default: text on a terminal, json otherwise
   --help
 
@@ -50,6 +54,8 @@ async function main(): Promise<number> {
       "poll-interval": { type: "string" },
       limit: { type: "string" },
       "acknowledge-gap": { type: "boolean", default: false },
+      offline: { type: "boolean", default: false },
+      fixtures: { type: "string", default: DEFAULT_FIXTURE_DIR },
       log: { type: "string" },
       help: { type: "boolean", default: false },
     },
@@ -94,13 +100,31 @@ async function main(): Promise<number> {
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
 
+  // An offline run never constructs a TraceRpc, so it has no path to the
+  // network at all — not a blocked one, an absent one.
+  const source: EventSource =
+    values.offline
+      ? new OfflineRpc(loadFixture(values.fixtures))
+      : new TraceRpc({ url: config.rpcUrl, log, signal: inFlight.signal });
+
+  if (values.offline) log.info("offline", { fixtures: values.fixtures });
+
+  // Live, "latest" is the right default: an indexer started now should follow
+  // the network from now. Offline, the fixture is the whole world and there is
+  // no reason to start at the end of it.
+  const start: StartLedger | undefined = values["start-ledger"]
+    ? startLedger(values["start-ledger"])
+    : values.offline
+      ? "oldest"
+      : undefined;
+
   try {
     const summary = await ingest({
       config,
       store,
-      rpc: new TraceRpc({ url: config.rpcUrl, log, signal: inFlight.signal }),
+      rpc: source,
       log,
-      ...(values["start-ledger"] ? { startLedger: startLedger(values["start-ledger"]) } : {}),
+      ...(start === undefined ? {} : { startLedger: start }),
       ...(values["end-ledger"] ? { endLedger: integer(values["end-ledger"], "--end-ledger") } : {}),
       once: values.once,
       acknowledgeGap: values["acknowledge-gap"],
@@ -164,6 +188,7 @@ main()
       error instanceof IngestError ||
       error instanceof ConfigError ||
       error instanceof FilterError ||
+      error instanceof FixtureError ||
       error instanceof SchemaError
     ) {
       // Expected refusals: one line, no stack. The message is the product.
