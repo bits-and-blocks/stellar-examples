@@ -48,6 +48,21 @@ export type GetHealthResponse = {
   ledgerRetentionWindow: number;
 };
 
+/**
+ * What the ingest loop needs from a server.
+ *
+ * Named as an interface so the loop can be driven by something other than a
+ * live RPC — the tests here, and the recorded fixtures a later task replays
+ * with the network unplugged.
+ */
+export type EventSource = {
+  getEvents(
+    request: GetEventsRequest & { filters: RpcFilter[]; limit?: number },
+  ): Promise<GetEventsResponse>;
+  getHealth(): Promise<GetHealthResponse>;
+  getNetwork(): Promise<{ passphrase: string; protocolVersion: number }>;
+};
+
 export type GetEventsRequest =
   | { startLedger: number; endLedger?: number; cursor?: never }
   | { cursor: string; startLedger?: never; endLedger?: never };
@@ -93,6 +108,13 @@ export type RpcOptions = {
   /** Attempts per call, including the first. Transport failures only. */
   maxAttempts?: number;
   timeoutMs?: number;
+  /**
+   * Abandon a request in flight. Wired to the second Ctrl-C, which is what
+   * makes "stop now" a real stop rather than a process teardown — a page can
+   * take a while to come back, and waiting for it is the thing the second
+   * interrupt is asking not to do.
+   */
+  signal?: AbortSignal;
 };
 
 export class TraceRpc {
@@ -141,12 +163,14 @@ export class TraceRpc {
     });
 
     for (let attempt = 1; ; attempt++) {
+      this.options.signal?.throwIfAborted();
       try {
         return await this.attempt<T>(method, body);
       } catch (error) {
         // An RpcError is the server's considered answer. Asking again with the
         // same arguments would get the same answer, so it goes straight up.
         if (error instanceof RpcError || attempt >= maxAttempts) throw error;
+        this.options.signal?.throwIfAborted();
         const waitMs = Math.min(30_000, 500 * 2 ** (attempt - 1));
         this.options.log.warn("rpc call failed, retrying", {
           method,
@@ -167,9 +191,15 @@ export class TraceRpc {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
-        signal: AbortSignal.timeout(this.options.timeoutMs ?? 30_000),
+        signal: this.options.signal
+          ? AbortSignal.any([
+              this.options.signal,
+              AbortSignal.timeout(this.options.timeoutMs ?? 30_000),
+            ])
+          : AbortSignal.timeout(this.options.timeoutMs ?? 30_000),
       });
     } catch (error) {
+      if (this.options.signal?.aborted) throw error;
       throw new RpcTransportError(`${method}: ${(error as Error).message}`, error);
     }
 

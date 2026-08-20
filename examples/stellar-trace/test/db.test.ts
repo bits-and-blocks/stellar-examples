@@ -8,7 +8,7 @@ import { TraceStore } from "../src/db.js";
 import type { RawEvent } from "../src/rpc.js";
 
 const dir = mkdtempSync(join(tmpdir(), "stellar-trace-test-"));
-after(() => rmSync(dir, { recursive: true, force: true }));
+after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
 
 /** A real testnet SAC transfer, trimmed to the fields the store reads. */
 const event = (id: string, ledger: number): RawEvent => ({

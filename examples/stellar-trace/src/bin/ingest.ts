@@ -72,16 +72,24 @@ async function main(): Promise<number> {
   if (values.limit) config.pageLimit = integer(values.limit, "--limit");
 
   const store = TraceStore.open(values.db);
-  const controller = new AbortController();
+
+  // Two stages, because "stop" means two different things. The first
+  // interrupt lets the page in flight land, which is the tidy stop. The
+  // second abandons the request itself, which is the impatient one — and
+  // either way the database is left on a committed cursor, so neither is
+  // more correct than the other, only faster.
+  const betweenPages = new AbortController();
+  const inFlight = new AbortController();
 
   let interrupts = 0;
   const onSignal = () => {
     if (++interrupts > 1) {
-      log.warn("second interrupt — exiting without finishing the page in flight");
-      process.exit(130);
+      log.warn("second interrupt — abandoning the request in flight");
+      inFlight.abort();
+      return;
     }
     log.info("interrupt — finishing the page in flight, then stopping");
-    controller.abort();
+    betweenPages.abort();
   };
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
@@ -90,13 +98,13 @@ async function main(): Promise<number> {
     const summary = await ingest({
       config,
       store,
-      rpc: new TraceRpc({ url: config.rpcUrl, log }),
+      rpc: new TraceRpc({ url: config.rpcUrl, log, signal: inFlight.signal }),
       log,
       ...(values["start-ledger"] ? { startLedger: startLedger(values["start-ledger"]) } : {}),
       ...(values["end-ledger"] ? { endLedger: integer(values["end-ledger"], "--end-ledger") } : {}),
       once: values.once,
       acknowledgeGap: values["acknowledge-gap"],
-      signal: controller.signal,
+      signal: betweenPages.signal,
     });
 
     const stats = store.stats();
@@ -116,9 +124,11 @@ async function main(): Promise<number> {
         reason: gap.reason,
       });
     }
-    return 0;
+    return interrupts > 0 ? 130 : 0;
   } finally {
     store.close();
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
   }
 }
 
@@ -138,8 +148,17 @@ function integer(value: string, flag: string): number {
   return parsed;
 }
 
+/**
+ * Exit by setting a code and letting the event loop drain, never by calling
+ * `process.exit`. Tearing the loop down while `fetch` still has a socket in
+ * hand trips a libuv assertion on Windows and exits 127 — which would replace
+ * every considered exit code below with a crash. Draining costs about half a
+ * second and also lets stdout flush.
+ */
 main()
-  .then((code) => process.exit(code))
+  .then((code) => {
+    process.exitCode = code;
+  })
   .catch((error: unknown) => {
     if (
       error instanceof IngestError ||

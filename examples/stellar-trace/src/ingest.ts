@@ -22,7 +22,7 @@ import type { TraceConfig } from "./config.js";
 import type { Gap, TraceStore } from "./db.js";
 import type { Logger } from "./log.js";
 import { NETWORK_PASSPHRASE } from "./network.js";
-import { RpcError, type RawEvent, type TraceRpc } from "./rpc.js";
+import { RpcError, type EventSource, type RawEvent } from "./rpc.js";
 import { cursorForLedger, ledgerOf } from "./toid.js";
 
 /**
@@ -34,7 +34,7 @@ export type StartLedger = number | "latest" | "oldest" | { latestMinus: number }
 export type IngestOptions = {
   config: TraceConfig;
   store: TraceStore;
-  rpc: TraceRpc;
+  rpc: EventSource;
   log: Logger;
   /** Only consulted for a database with no cursor yet. */
   startLedger?: StartLedger;
@@ -79,7 +79,7 @@ export const EXIT = {
  * this is what stops a mainnet URL in that file from filling the database with
  * mainnet events under a testnet-shaped example.
  */
-export async function preflight(rpc: TraceRpc, log: Logger) {
+export async function preflight(rpc: EventSource, log: Logger) {
   const [network, health] = await Promise.all([rpc.getNetwork(), rpc.getHealth()]);
 
   if (network.passphrase !== NETWORK_PASSPHRASE) {
@@ -133,6 +133,9 @@ export async function ingest(options: IngestOptions): Promise<IngestSummary> {
           : { startLedger: cursor.startLedger }),
       });
     } catch (error) {
+      // A request abandoned by the second interrupt. Nothing was committed,
+      // so the database is still on the last cursor it stored.
+      if (signal?.aborted) return { ...summary, stoppedBecause: "signal" };
       // The stored cursor has aged out from under us. Nothing can fetch those
       // ledgers now — not this program, not a different one — so the only
       // choices are to stop and say so, or to continue and record the hole.
