@@ -67,6 +67,10 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npm run build --if-present
+      # Examples that ship tests get them run; the ones that do not are
+      # unaffected. Anything needing the network belongs in its own script,
+      # not here.
+      - run: npm test --if-present
 
   rust:
     name: build ${{ matrix.dir }}
