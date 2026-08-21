@@ -16,6 +16,7 @@
     "recent": "tsx scripts/recent.ts",
     "capture": "tsx scripts/capture.ts",
     "demo": "tsx scripts/demo.ts",
+    "serve": "tsx src/bin/serve.ts",
     "test": "node --import tsx --test test/*.test.ts",
     "check:restart": "tsx scripts/check-restart.ts"
   },
