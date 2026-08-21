@@ -1,0 +1,132 @@
+[
+  {
+    "note": "a classic payment moving XLM through the native SAC",
+    "id": "0018202367753199616-0000000000",
+    "ledger": 4238069,
+    "txHash": "7ce4fb1f5012854fd241af9dd1c756b1c289e6ca398b4cc8ab1ec4194defd391",
+    "contractId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+    "topicsXdr": [
+      "AAAADwAAAAh0cmFuc2Zlcg==",
+      "AAAAEgAAAAAAAAAAEH3Rayw4M0iCLoEe96rPFNGYim8AVHJU0z4ebYZW4Jw=",
+      "AAAAEgAAAAAAAAAAFk6O1YzIGTqjybpIjWccpCRsr0pZVMl7sY8/+2ZJRUs=",
+      "AAAADgAAAAZuYXRpdmUAAA=="
+    ],
+    "valueXdr": "AAAACgAAAAAAAAAAAAAAF0h26AA="
+  },
+  {
+    "note": "a transfer to a muxed destination: the value is a map, not an i128",
+    "id": "0018202372048166912-0000000000",
+    "ledger": 4238070,
+    "txHash": "50ebd65d53496dab09c3b5e6f2faf85178103b1680560e23e510b6833f1ab34a",
+    "contractId": "CACZL3MGXXP3O6ROMB4Q36ROFULRWD6QARPE3AKWPSWMYZVF2474CBXP",
+    "topicsXdr": [
+      "AAAADwAAAAh0cmFuc2Zlcg==",
+      "AAAAEgAAAAAAAAAABb7SuG6zHwPPzkD2GAq1nCR53zmsfEuHNElET9K3Vao=",
+      "AAAAEgAAAAAAAAAAf0+4aD25Arvr2pjvSSn2e+fD+LCaYRwEhnfDDZAQSi0=",
+      "AAAADgAAAD5QWVVTRDpHQlQyS0pES1VaWVpUUVBDU1I1N1ZaVDVOSkhJNEg3Rk9CNUxUNUZQUldTUjdJNUI0RlMzVVU3RwAA"
+    ],
+    "valueXdr": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAAAAABAAAADwAAAAt0b19tdXhlZF9pZAAAAAAOAAAAG1hMTSBlMmUgbW9uaXRvciB0cmFuc2FjdGlvbgA="
+  },
+  {
+    "note": "mint: the recipient in the topics, and no admin since CAP-67",
+    "id": "0018203192386932736-0000000000",
+    "ledger": 4238261,
+    "txHash": "dd69b0c915c94ea2368f6f5048b278d4b50c1c60c0557d5986437c22f9347dd8",
+    "contractId": "CD7CYC3XDGNHWLHYAKIV5BMN7SPF7VZ24BYTZMCR2JCGYPMBRBJNHIMD",
+    "topicsXdr": [
+      "AAAADwAAAARtaW50",
+      "AAAAEgAAAAAAAAAAFQIE02CB6KcOSnIhQ+TviLrqQ/EVyXgDDdbqXcwV0TA=",
+      "AAAADgAAAD5UU0dMTzpHQ1FDTldUMjJKRExFTlFBVklFNkRSSkdIV0FRNkVYMkg1QUJHUFY1NUVKVVBQWk01VUE3S0haUgAA"
+    ],
+    "valueXdr": "AAAACgAAAAAAAAAAAAAAAAjw0YA="
+  },
+  {
+    "note": "a contract whose three-topic mint names an address, not an asset: not the token interface",
+    "id": "0018202414997856256-0000000000",
+    "ledger": 4238080,
+    "txHash": "f6b4adb284d85a66336757faa8dd3dd8f9e635da4a8ce9654c6b0cc80d890e6e",
+    "contractId": "CDEG53WFA6DH6T355CRSHFUHJARVZCK5B54OKFKKLMXVXCYNN5AE7ALU",
+    "topicsXdr": [
+      "AAAADwAAAARtaW50",
+      "AAAAEgAAAAHIbu7FB4Z/T33ooyOWh0gjXIldD3jlFUpbL1uLDW9ATw==",
+      "AAAAEgAAAAHLpFbr1MKaWzUgsagEE/LprdvsVMXBFTONiXlHCidKxg=="
+    ],
+    "valueXdr": "AAAACgAAAAAAAAAAAAAAACGNogQ="
+  },
+  {
+    "note": "mint to a muxed destination",
+    "id": "0018203046358028288-0000000000",
+    "ledger": 4238227,
+    "txHash": "e457801e48511d5ccaef1082ba77246f70593db7011c9cdf08d9662b153f7edf",
+    "contractId": "CAMW7W75HPZHAP33TPBJYMKDV5AGKUS5TGFYDIVLBV5FC3Q6QTS233KK",
+    "topicsXdr": [
+      "AAAADwAAAARtaW50",
+      "AAAAEgAAAAAAAAAA2psIbEwF5QZLQVmuy7o14seV/dGf4mSS3o4JX4HIkS8=",
+      "AAAADgAAAD5CTEFIMTpHRFlIVDVYUEE2WFdFWU1CSFVTNkJBREJCRlNKUUtMQUVXTlM2RlhJUEJBN0pOMzZGM1NHSVVBVAAA"
+    ],
+    "valueXdr": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAExLQAAAAADwAAAAt0b19tdXhlZF9pZAAAAAAOAAAAFFNlbmRpbmcgQXNzZXQ6IEJMQUgx"
+  },
+  {
+    "note": "burn",
+    "id": "0018203630473580548-0000000000",
+    "ledger": 4238363,
+    "txHash": "07ee87a65f3963f7fd4ff19cee26dc616a069bb56e59ced30b583c5965778519",
+    "contractId": "CCVMSAUB5RSCN7VFA2GESPVGRBNDHLQG5YDA7DST63OXJB5YBZGKEUVU",
+    "topicsXdr": [
+      "AAAADwAAAARidXJu",
+      "AAAAEgAAAAAAAAAAKz5wgunAziwYceW/vtm7CmiDB2RFm1e6gBfDYU3LTYU=",
+      "AAAADgAAAD9DQVJCT046R0RUNVhNNUM1U1RRWlM1UjNGNENFR0tKV0tEVldCSVdCRVY0VElZVjVNRFZWTUtBNzc1VDRPS1kA"
+    ],
+    "valueXdr": "AAAACgAAAAAAAAAAAAAAAAeJoGA="
+  },
+  {
+    "note": "clawback",
+    "id": "0018204811589627904-0000000000",
+    "ledger": 4238638,
+    "txHash": "83c6291d36889b0d3ca5220359084718910e03576d15654754f9736bee860293",
+    "contractId": "CCST65QNIHUJ3V2JK5SDTXUXYSGQZI6MSSXDMNRA55ECJEWU4UFDLQHR",
+    "topicsXdr": [
+      "AAAADwAAAAhjbGF3YmFjaw==",
+      "AAAAEgAAAAAAAAAAlL/giC2f178IxQna8JWtO3bqX2NNktyM4X2FxJT/V4Y=",
+      "AAAADgAAAD5FVVJDVjpHQzY2UElNVjRTMldFUVlHM1VGT0dHN1o0T0lBUUFLSkxFS1g2QzVaUTZBWlQ0RlVYVVBPR0lLTAAA"
+    ],
+    "valueXdr": "AAAACgAAAAAAAAAAAAAAABfXhAA="
+  },
+  {
+    "note": "the fee every classic transaction now emits",
+    "id": "0018202367753191424-0000000000",
+    "ledger": 4238069,
+    "txHash": "c240b8ee1e59f666a06f1dbf297e56f1c9888a7d89385d4fa24d71f87691a1f3",
+    "contractId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+    "topicsXdr": [
+      "AAAADwAAAANmZWUA",
+      "AAAAEgAAAAAAAAAAA+0oimKONzC713z+Cl8orRHR8/s0JY+JMothA0fY7bY="
+    ],
+    "valueXdr": "AAAACgAAAAAAAAAAAAAAAAAAAGQ="
+  },
+  {
+    "note": "approve, whose value is a vec of amount and expiry",
+    "id": "0018204236064026624-0000000000",
+    "ledger": 4238504,
+    "txHash": "eaacb0db649efb1abd412eabfd2c3fedf7243aa4aab3d96a3cce19d8b21ef3b3",
+    "contractId": "CBB543RNAI7QXJS3HJKDQ6FXC2AQDSZP2VEWSQMDRUSCYDORVBRHG7OX",
+    "topicsXdr": [
+      "AAAADwAAAAdhcHByb3ZlAA==",
+      "AAAAEgAAAAHab57geGyBI0TYKBfvGbZItK8SD4vRC/ZY5rmerP8kuA==",
+      "AAAAEgAAAAGItCmY/GGwwJG0nQOtFcC6TdDrmseEO02su3MUl8Ej2g==",
+      "AAAADgAAAERVU0RDQUxMQ0NUUDpHQktDR0lFRVJZRVcyWEUzS1dWSTNBUzJOWkQzSFdKV0Y1TEk3SElZWjRLTUNVTFBTNEdYUUxWWg=="
+    ],
+    "valueXdr": "AAAAEAAAAAEAAAACAAAACgAAAAAAAAAAAAAAAAjw0YAAAAADAECsqA=="
+  },
+  {
+    "note": "a contract with its own one-topic transfer: not the token interface",
+    "id": "0018205421474979840-0000000002",
+    "ledger": 4238780,
+    "txHash": "ee3d3d9ccc89efdccbee738bc090e1222943cd2c468290ad7e852457de8b3e7b",
+    "contractId": "CDGYZSMWOOKM55WEKEQ2HEMM7RS2KRA7MYI2DDYXWV5YHGUVUGQZSOCB",
+    "topicsXdr": [
+      "AAAADwAAAAh0cmFuc2Zlcg=="
+    ],
+    "valueXdr": "AAAAEQAAAAEAAAADAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAJTDu2AAAAADwAAAARmcm9tAAAAAQAAAA8AAAACdG8AAAAAABIAAAAAAAAAAK6cRZ3UmqEir3L09JYhmlduWPV9ZYd7aa8t8E4FxFAF"
+  }
+]
