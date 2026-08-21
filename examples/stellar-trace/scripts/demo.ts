@@ -84,5 +84,6 @@ run("3. Trace one of them", ["src/bin/trace.ts", "--offline", suggested]);
 
 console.log(
   "\n\x1b[1mThat was the whole stack with the network unplugged.\x1b[0m\n" +
-    "  Recapture with: npm run capture -- --ledgers 200\n",
+    `  The same thing as a page:  npm run serve -- --offline --db ${DB}\n` +
+    "  Recapture the fixture:     npm run capture -- --ledgers 200\n",
 );
