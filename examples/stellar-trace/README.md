@@ -269,25 +269,28 @@ demonstrable at an arbitrary hour.
 
 There is no live indexer to point a host at — `ingest` is a poll loop, and a
 serverless platform gives it no process to poll from. What *can* be deployed
-is the offline path above: the committed fixture and a `demo.db` built from
-it, served read-only. [`api/index.ts`](api/index.ts) is that: the same
-[`createRequestListener`](src/web/server.ts) the CLI's `serve` command uses,
-adapted to a function signature instead of an `http.Server`, reading the
-fixture and a copy of `demo.db` it stages into `/tmp` on cold start (the one
-writable path on Vercel, since `TraceStore.open` opens its file read-write).
+is the offline path above, served read-only. [`api/index.ts`](api/index.ts) is
+that: the same [`createRequestListener`](src/web/server.ts) the CLI's `serve`
+command uses, adapted to a function signature instead of an `http.Server`.
 
 ```bash
 vercel   # from this directory, with Root Directory set here in a monorepo
 ```
 
-`npm run vercel-build` (in [`package.json`](package.json), which Vercel runs
-in place of `build` when present) rebuilds `demo.db` from the fixture during
-the platform's build step, and [`vercel.json`](vercel.json) ships both the
-fixture and the database into the function bundle and routes every path to
-it. The result is honest about what it is: the same "reading a captured
-fixture, nothing here reaches the network" banner the offline CLI shows,
-covering the same ledger range — a demo frozen at deploy time, not a live
-index kept somewhere else.
+Nothing is read off disk at request time. The fixture and `trace.config.json`
+are imported as JSON — which `esbuild`, the bundler behind both `tsx` and
+Vercel's function builder, resolves and inlines into the function at build
+time, the same guarantee a `.ts` import gets. A bundled *file path* doesn't
+get that guarantee across a monorepo's function-packaging rules, which is why
+this isn't done by shipping a prebuilt database file and hoping it lands
+somewhere findable — a first attempt at exactly that hit `ENOENT` in
+production. The one thing that can't be inlined that way is the SQLite
+database itself: `better-sqlite3` needs a real file, so `demo.db` is rebuilt
+— from the imported fixture, in `/tmp`, the one writable path here — on cold
+start, and reused for the lifetime of that instance. The result is honest
+about what it is: the same "reading a captured fixture, nothing here reaches
+the network" banner the offline CLI shows, covering the same ledger range — a
+demo frozen at deploy time, not a live index kept somewhere else.
 
 ### Saying what it cannot show
 

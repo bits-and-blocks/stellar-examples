@@ -2,55 +2,70 @@
  * The proof view, adapted for Vercel's Node.js function runtime.
  *
  * There is no live indexer here — a serverless function cannot run the
- * `ingest` poll loop, and the platform's filesystem is read-only outside
- * `/tmp`. So this serves the same offline slice `npm run demo` does: the
- * committed `fixtures/testnet-slice` fixture, and a `demo.db` built from it
- * during `npm run vercel-build` (see package.json) rather than at request
- * time. Both are shipped into the function bundle via `vercel.json`'s
- * `includeFiles` and read back out through `process.cwd()`, which is where
- * Vercel places them.
+ * `ingest` poll loop, and getting a file onto the platform's filesystem at
+ * request time is unreliable across a monorepo's function-bundling rules.
+ * So nothing here is read off disk at request time at all: the fixture and
+ * `trace.config.json` are imported as JSON, which `esbuild` (what both
+ * `tsx` and Vercel's function builder run on) resolves and inlines into the
+ * function bundle at build time — the same guarantee a `.ts` import gets,
+ * and one a bundled *file path* does not.
  *
- * `TraceStore.open` always opens its file read-write (it turns on WAL, which
- * needs to create `-wal`/`-shm` siblings), so the bundled `demo.db` is copied
- * into `/tmp` — the one writable directory here — on cold start, and reused
- * for the lifetime of that instance.
+ * The one thing that can't be inlined that way is the SQLite database:
+ * `better-sqlite3` needs a real file to open. Rather than ship a prebuilt
+ * one and hope it lands somewhere findable, this rebuilds it — in `/tmp`,
+ * the one writable path here — from the imported fixture on cold start, the
+ * same `ingest` call `npm run ingest -- --offline --once` makes locally.
  */
-import { copyFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import manifest from "../fixtures/testnet-slice/manifest.json" with { type: "json" };
+import pages from "../fixtures/testnet-slice/pages.json" with { type: "json" };
+import transactions from "../fixtures/testnet-slice/transactions.json" with { type: "json" };
+import traceConfig from "../trace.config.json" with { type: "json" };
+
+import { parseConfig, type TraceConfigFile } from "../src/config.js";
 import { TraceStore } from "../src/db.js";
-import { DEFAULT_FIXTURE_DIR, loadFixture } from "../src/offline/fixtures.js";
+import { ingest } from "../src/ingest.js";
+import { createLogger } from "../src/log.js";
+import {
+  assembleFixture,
+  type CapturedPage,
+  type FixtureManifest,
+} from "../src/offline/fixtures.js";
 import { OfflineRpc } from "../src/offline/replay.js";
+import type { GetTransactionResponse } from "../src/rpc.js";
 import { createRequestListener, type RequestListener } from "../src/web/server.js";
 
-let listener: RequestListener | undefined;
+let listener: Promise<RequestListener> | undefined;
 
-function getListener(): RequestListener {
-  if (listener) return listener;
+async function buildListener(): Promise<RequestListener> {
+  const log = createLogger({ format: "json" });
 
-  const bundledDb = path.join(process.cwd(), "demo.db");
-  const runtimeDb = path.join("/tmp", "demo.db");
-  if (!existsSync(runtimeDb) && existsSync(bundledDb)) {
-    copyFileSync(bundledDb, runtimeDb);
-  }
+  const fixture = assembleFixture(
+    "fixtures/testnet-slice",
+    manifest as FixtureManifest,
+    pages as CapturedPage[],
+    transactions as unknown as Record<string, GetTransactionResponse>,
+  );
+  const config = parseConfig("trace.config.json", traceConfig as TraceConfigFile);
+  const rpc = new OfflineRpc(fixture);
 
-  const fixture = loadFixture(path.join(process.cwd(), DEFAULT_FIXTURE_DIR));
-  const store = TraceStore.open(runtimeDb);
-  const source = new OfflineRpc(fixture);
+  const store = TraceStore.open(path.join("/tmp", "demo.db"));
+  await ingest({ config, store, rpc, log, once: true, startLedger: "oldest" });
 
-  listener = createRequestListener({
+  return createRequestListener({
     store,
-    source,
-    origin: { kind: "fixture", name: DEFAULT_FIXTURE_DIR },
+    source: rpc,
+    origin: { kind: "fixture", name: "fixtures/testnet-slice" },
     window: {
       oldestLedger: fixture.manifest.range.startLedger,
       latestLedger: fixture.manifest.range.endLedger,
     },
   });
-  return listener;
 }
 
-export default function handler(request: IncomingMessage, response: ServerResponse) {
-  return getListener()(request, response);
+export default async function handler(request: IncomingMessage, response: ServerResponse) {
+  listener ??= buildListener();
+  return (await listener)(request, response);
 }

@@ -60,7 +60,21 @@ export function loadFixture(directory: string): Fixture {
     directory,
     TRANSACTIONS_FILE,
   );
+  return assembleFixture(directory, manifest, pages, transactions);
+}
 
+/**
+ * The validation and flattening `loadFixture` does once its three files are
+ * in hand — split out so a host that cannot read the fixture off disk at
+ * request time (a serverless bundle, say) can hand it JSON it imported
+ * statically instead, and get the same checked `Fixture` back.
+ */
+export function assembleFixture(
+  directory: string,
+  manifest: FixtureManifest,
+  pages: CapturedPage[],
+  transactions: Record<string, GetTransactionResponse>,
+): Fixture {
   // Flattened here rather than stored flat: the pages are the record, and the
   // event list is a view of them. Ids are unique and ascending, so the order
   // the server produced is the order everything downstream sees.
