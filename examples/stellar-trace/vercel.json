@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "{fixtures/**,demo.db}"
+    }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+}

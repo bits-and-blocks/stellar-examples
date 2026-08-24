@@ -31,9 +31,17 @@ export type ProofViewOptions = {
   recentLimit?: number;
 };
 
+export type RequestListener = (request: IncomingMessage, response: ServerResponse) => Promise<void>;
+
 const HASH = /^[0-9a-f]{64}$/;
 
-export function createProofView(options: ProofViewOptions) {
+/**
+ * The routing logic on its own, without the `http.Server` `createProofView`
+ * wraps it in. Split out so a host that already owns request dispatch — a
+ * serverless platform's function runtime, for one — can call it directly
+ * instead of handing it a server to `.listen()`.
+ */
+export function createRequestListener(options: ProofViewOptions): RequestListener {
   const { store, source, origin } = options;
 
   const state = (): IndexState => {
@@ -68,7 +76,7 @@ export function createProofView(options: ProofViewOptions) {
         .flatMap((decoded) => (decoded ? [decoded.summary] : [])),
     }));
 
-  return createServer(async (request: IncomingMessage, response: ServerResponse) => {
+  return async (request: IncomingMessage, response: ServerResponse) => {
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
 
@@ -113,7 +121,11 @@ export function createProofView(options: ProofViewOptions) {
         ),
       );
     }
-  });
+  };
+}
+
+export function createProofView(options: ProofViewOptions) {
+  return createServer(createRequestListener(options));
 }
 
 function send(response: ServerResponse, status: number, body: string): void {

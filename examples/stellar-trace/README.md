@@ -265,6 +265,30 @@ they have to take on trust. It also keeps the whole page working from a
 fixture with the network unplugged, which is the property that makes it
 demonstrable at an arbitrary hour.
 
+### Deploying a frozen slice of it
+
+There is no live indexer to point a host at — `ingest` is a poll loop, and a
+serverless platform gives it no process to poll from. What *can* be deployed
+is the offline path above: the committed fixture and a `demo.db` built from
+it, served read-only. [`api/index.ts`](api/index.ts) is that: the same
+[`createRequestListener`](src/web/server.ts) the CLI's `serve` command uses,
+adapted to a function signature instead of an `http.Server`, reading the
+fixture and a copy of `demo.db` it stages into `/tmp` on cold start (the one
+writable path on Vercel, since `TraceStore.open` opens its file read-write).
+
+```bash
+vercel   # from this directory, with Root Directory set here in a monorepo
+```
+
+`npm run vercel-build` (in [`package.json`](package.json), which Vercel runs
+in place of `build` when present) rebuilds `demo.db` from the fixture during
+the platform's build step, and [`vercel.json`](vercel.json) ships both the
+fixture and the database into the function bundle and routes every path to
+it. The result is honest about what it is: the same "reading a captured
+fixture, nothing here reaches the network" banner the offline CLI shows,
+covering the same ledger range — a demo frozen at deploy time, not a live
+index kept somewhere else.
+
 ### Saying what it cannot show
 
 An indexer that has been running for a day knows about a day. A proof view
@@ -727,9 +751,11 @@ x no transaction 00000000…00000000 on this RPC server.
 - **Search, sign in, or paginate.** The page is one form and one document. A
   hash is the only input it takes, and the list on the front is the index's most
   recent transactions rather than a search over them.
-- **Deploy itself.** It is a Node process listening on a port; where that
-  process runs is not this example's business. Point it at a fixture and it
-  needs nothing else to be up.
+- **Keep a live index anywhere but where you run `ingest`.** `serve` reads
+  whatever database it is pointed at; it does not poll one into existence
+  itself. [Deployed](#deploying-a-frozen-slice-of-it), it can only be pointed
+  at a fixture frozen at build time — the same offline path as the CLI, not a
+  live index kept running somewhere else.
 - **Store what it traces.** `trace` reads one transaction from RPC and prints
   it. It never touches the database, and running it twice asks the network
   twice.

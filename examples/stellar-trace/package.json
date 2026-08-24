@@ -18,7 +18,9 @@
     "demo": "tsx scripts/demo.ts",
     "serve": "tsx src/bin/serve.ts",
     "test": "node --import tsx --test test/*.test.ts",
-    "check:restart": "tsx scripts/check-restart.ts"
+    "check:restart": "tsx scripts/check-restart.ts",
+    "//vercel-build": "Vercel runs this instead of `build` when it's present. It typechecks, then rebuilds demo.db from the committed fixture so the deployed function has a database to open — the same thing `npm run demo` does locally.",
+    "vercel-build": "tsc --noEmit && rm -f demo.db && tsx src/bin/ingest.ts --offline --db demo.db --once"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "16.2.0",
@@ -29,5 +31,9 @@
     "@types/node": "^20",
     "tsx": "^4.23.12",
     "typescript": "^5"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.2": true
   }
 }
