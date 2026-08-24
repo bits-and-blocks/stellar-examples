@@ -1,0 +1,47 @@
+{
+ "name": "testnet-4247683-4247802",
+ "capturedAt": "2026-08-20T21:31:33.178Z",
+ "rpcUrl": "https://soroban-testnet.stellar.org",
+ "network": {
+  "friendbotUrl": "https://friendbot.stellar.org/",
+  "passphrase": "Test SDF Network ; September 2015",
+  "protocolVersion": 27
+ },
+ "range": {
+  "startLedger": 4247683,
+  "endLedger": 4247802
+ },
+ "filters": [
+  {
+   "type": "contract",
+   "contractIds": [
+    "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+    "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+   ],
+   "topics": [
+    [
+     "AAAADwAAAAh0cmFuc2Zlcg==",
+     "*",
+     "*",
+     "*"
+    ],
+    [
+     "AAAADwAAAARtaW50",
+     "*",
+     "*"
+    ],
+    [
+     "AAAADwAAAARidXJu",
+     "*",
+     "*"
+    ]
+   ]
+  }
+ ],
+ "filterFingerprint": "4628a7ee4d1bd698",
+ "counts": {
+  "pages": 1,
+  "events": 317,
+  "transactions": 20
+ }
+}

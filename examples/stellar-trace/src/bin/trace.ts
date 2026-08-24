@@ -13,7 +13,9 @@ import { createLogger } from "../log.js";
 import { decodeTransaction, MetaError } from "../meta/decode.js";
 import { renderTransaction } from "../meta/render.js";
 import { NETWORK_PASSPHRASE } from "../network.js";
-import { RpcError, TraceRpc } from "../rpc.js";
+import { DEFAULT_FIXTURE_DIR, FixtureError, loadFixture } from "../offline/fixtures.js";
+import { OfflineRpc } from "../offline/replay.js";
+import { RpcError, TraceRpc, type TransactionSource } from "../rpc.js";
 
 const USAGE = `
 stellar-trace trace — what one transaction did to the ledger
@@ -22,6 +24,8 @@ stellar-trace trace — what one transaction did to the ledger
 
   --full             every field of every entry, not only the ones that changed
   --json             the decoded structure, for piping somewhere else
+  --offline          read a captured fixture instead of the network
+  --fixtures <dir>   which fixture (default: ${DEFAULT_FIXTURE_DIR})
   --config <path>    where the RPC url comes from (default: ${DEFAULT_CONFIG_PATH})
   --help
 
@@ -40,6 +44,8 @@ async function main(): Promise<number> {
     options: {
       full: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
+      offline: { type: "boolean", default: false },
+      fixtures: { type: "string", default: DEFAULT_FIXTURE_DIR },
       config: { type: "string", default: DEFAULT_CONFIG_PATH },
       help: { type: "boolean", default: false },
     },
@@ -64,7 +70,12 @@ async function main(): Promise<number> {
 
   const config = loadConfig(values.config);
   const log = createLogger({ format: "text", level: "warn" });
-  const rpc = new TraceRpc({ url: config.rpcUrl, log });
+
+  // Offline reads a captured fixture and never constructs a client.
+  const rpc: TransactionSource =
+    values.offline
+      ? new OfflineRpc(loadFixture(values.fixtures))
+      : new TraceRpc({ url: config.rpcUrl, log });
 
   const network = await rpc.getNetwork();
   if (network.passphrase !== NETWORK_PASSPHRASE) {
@@ -106,7 +117,12 @@ main()
     process.exitCode = code;
   })
   .catch((error: unknown) => {
-    if (error instanceof TraceError || error instanceof ConfigError || error instanceof MetaError) {
+    if (
+      error instanceof TraceError ||
+      error instanceof ConfigError ||
+      error instanceof FixtureError ||
+      error instanceof MetaError
+    ) {
       console.error(`\nx ${error.message}\n`);
       process.exitCode = error instanceof TraceError ? error.exitCode : EXIT.usage;
       return;
