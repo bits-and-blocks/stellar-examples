@@ -10,6 +10,9 @@ again produces the same database as never having stopped.
 **`trace <tx-hash>`** takes one transaction and prints what it did to the
 ledger — every entry it touched, and what that entry held before and after.
 
+**`serve`** is the same thing as a page: paste a hash, get the progression,
+with the indexed range stated on every view.
+
 The two are joined by a transaction hash and nothing else: the indexer says
 *that* a transfer happened, and the trace says what the ledger looked like on
 either side of it. Neither knows what a `transfer` means — that lives in
@@ -26,6 +29,7 @@ needs no network and cannot use one.
 | Storage | one SQLite file, raw base64 XDR |
 | Transaction meta | `TransactionMeta` v4 (protocol 23+), decoded locally |
 | Offline | `fixtures/testnet-slice`, whole responses as captured |
+| The page | `node:http`, server-rendered, no client JavaScript |
 | Verified against | `soroban-testnet.stellar.org`, protocol 27, August 2026 |
 
 ## Run it
@@ -156,15 +160,16 @@ transaction 476eb1bb01e3342ed6acaa5228f4e4c27f231eb5917872d71c0012e0eeafde8f
   source GBRMGCKG7U2CX7LIWHP4SDSAO7OGXQDRTEJDBMPE27E5X4O73OV3RTUS · fee 100 stroops · meta v4
 
 fee and sequence number, before any operation ran
-  event  fee GBRMGCKG7U2CX7LIWHP4SDSAO7OGXQDRTEJDBMPE27E5X4O73OV3RTUS  =  100
-         from CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+  fee     0.0000100 XLM fee from GBRMG…RTUS
+          from CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
   ~ account GBRMG…RTUS  (updated)
       sequence: 18235262907711489  ->  18235262907711490
       sequence bumped in ledger: 4245729  ->  4245730
 
 operation 0 · payment
-  event  transfer GBRMGCKG…RTUS GAV6PB6T…OU6O native  =  {amount: 92500000, to_muxed_id: "note 2"}
-         from CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+  transfer  9.2500000 XLM from GBRMG…RTUS to GAV6P…OU6O (muxed: note 2)
+          emitted by native's Stellar Asset Contract, derived and matched
+          from CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
   ~ account GBRMG…RTUS  (updated)
       XLM balance: 9,981.9999800 (99819999800)  ->  9,972.7499800 (99727499800)   -92500000
   ~ account GAV6P…OU6O  (updated)
@@ -222,6 +227,62 @@ Three things about that encoding cost time if you meet them by surprise:
 Protocol 23 moved this to `TransactionMeta` **v4**, which is what testnet
 returns today; v1 through v3 are still decoded, since an archival RPC can serve
 older ledgers.
+
+## The page
+
+```bash
+npm run serve -- --offline --db demo.db     # from the committed fixture
+npm run serve                               # from testnet, against trace.db
+```
+
+Then open <http://127.0.0.1:3000>. Paste a transaction hash, or click one of
+the transactions the index already holds, and you get the same progression the
+CLI prints: every step, the events it emitted, and the ledger entries behind
+them with their before and after values.
+
+```
+Indexed ledgers 4247683–4247802, 317 events.
+Reading a captured fixture, fixtures/testnet-slice. Nothing here reaches the network.
+
+423693ed81a2a4abe68e17bcadb705c23aaba94a8b92fbed2f18408e7d180c24
+SUCCESS (Success) · ledger 4247802 · 2026-08-20T21:30:36.000Z · meta v4
+This transaction is in the index — 1 matching event stored here.
+
+  Operation 0 · payment
+    transfer  2.0000000 XLM from GB5FC…RLCH to GBTOR…JJZV
+              emitted by native's Stellar Asset Contract, derived and matched
+    updated  account GB5FC…RLCH
+      XLM balance   10,606.4939200 (106064939200)  →  10,604.4939200 (106044939200)
+    updated  account GBTOR…JJZV
+      XLM balance    9,597.4914300  (95974914300)  →   9,599.4914300  (95994914300)
+```
+
+It is `node:http` and server-rendered strings — no framework, no client-side
+JavaScript, no build step. Partly because the page is one form and one
+document, and partly because the thing on display is a state progression the
+network recorded: anything sitting between a reader and that is one more thing
+they have to take on trust. It also keeps the whole page working from a
+fixture with the network unplugged, which is the property that makes it
+demonstrable at an arbitrary hour.
+
+### Saying what it cannot show
+
+An indexer that has been running for a day knows about a day. A proof view
+built on one can very easily imply otherwise, and the failure is silent: a
+blank result reads as *nothing happened* rather than *we never looked*. So
+every view carries the range, and each dead end says which one it hit.
+
+| The reader asks for | The page says |
+| --- | --- |
+| a hash in the index | the trace, and that it is in the index |
+| a hash outside the indexed range | the trace, **and** that it is outside the range, which starts at ledger N and runs to M — the index decides what the page can suggest, not what it can explain |
+| a hash the source cannot produce | which ledgers that source holds, that anything older is gone from everywhere, and no trace at all |
+| something that is not a hash | that it is not a hash, and that nothing was looked up |
+| anything, with an empty database | that nothing is indexed yet, and the command that fills it |
+| anything, with a gap recorded | the gap's ledger range, and that transfers in there were never seen — which is not the same as never having happened |
+
+Each of those is [a test](test/web.test.ts) against a real server on a real
+port, because they are the states most likely to rot quietly.
 
 ## Three things about `getEvents` that make ingest harder than it looks
 
@@ -542,6 +603,17 @@ started now should follow the network from now, so it is `latest`; offline, the
 fixture is the whole world and there is no reason to start at the end of it, so
 it is `oldest`.
 
+### `serve`
+
+```
+--port <n>               default: 3000
+--host <host>            default: 127.0.0.1
+--db <path>              the indexer's database (default: trace.db)
+--offline                serve from a captured fixture instead of the network
+--fixtures <dir>         which fixture (default: fixtures/testnet-slice)
+--config <path>          where the RPC url comes from
+```
+
 ### `capture` and `demo`
 
 ```
@@ -608,6 +680,12 @@ x no transaction 00000000…00000000 on this RPC server.
 - **Decode on the way in.** Events are stored as the XDR they arrived as, and
   decoded on the way out, every time. A decoder fixed next week reads the rows
   ingested last week; a decoder that was wrong cost a query, not a re-ingest.
+- **Search, sign in, or paginate.** The page is one form and one document. A
+  hash is the only input it takes, and the list on the front is the index's most
+  recent transactions rather than a search over them.
+- **Deploy itself.** It is a Node process listening on a port; where that
+  process runs is not this example's business. Point it at a fixture and it
+  needs nothing else to be up.
 - **Store what it traces.** `trace` reads one transaction from RPC and prints
   it. It never touches the database, and running it twice asks the network
   twice.
@@ -651,8 +729,12 @@ src/
     decode.ts          ** resultMetaXdr -> a state progression **
     entries.ts         ledger entries described in words and formatted
     render.ts          the decoded transaction as text
+  web/
+    server.ts          routes, and the facts the page is given
+    page.ts            ** the HTML, and the honest states **
   bin/ingest.ts        the ingest command line
   bin/trace.ts         the trace command line
+  bin/serve.ts         the proof view on a port
 fixtures/
   testnet-slice/       a committed capture: whole responses, untouched
 scripts/
