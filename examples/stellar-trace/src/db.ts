@@ -298,6 +298,38 @@ export class TraceStore {
       }));
   }
 
+  /**
+   * The stored events of one transaction, still as XDR.
+   *
+   * Handing back the bytes rather than an interpretation is the whole reason
+   * ingest stored them: a decoder written months later reads these same rows,
+   * and a decoder that turns out to be wrong is re-run rather than re-ingested.
+   */
+  eventsForTransaction(txHash: string): Array<{
+    id: string;
+    contractId: string | null;
+    topicsXdr: string[];
+    valueXdr: string;
+  }> {
+    return this.db
+      .prepare<[string], {
+        id: string;
+        contract_id: string | null;
+        topics_xdr: string;
+        value_xdr: string;
+      }>(
+        `SELECT id, contract_id, topics_xdr, value_xdr
+           FROM events WHERE tx_hash = ? ORDER BY id`,
+      )
+      .all(txHash)
+      .map((row) => ({
+        id: row.id,
+        contractId: row.contract_id,
+        topicsXdr: JSON.parse(row.topics_xdr) as string[],
+        valueXdr: row.value_xdr,
+      }));
+  }
+
   /** Every stored event id, in ledger order. Used by the restart check. */
   eventIds(): string[] {
     return this.db

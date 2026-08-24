@@ -19,6 +19,7 @@
  */
 import { Address, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 
+import { decoders, type DecodedEvent } from "../decoders/index.js";
 import { NETWORK_PASSPHRASE } from "../network.js";
 import {
   describeEntry,
@@ -61,8 +62,16 @@ export type TraceEvent = {
   stage: string;
   contractId: string | null;
   type: string;
+  /** The topics and value as they are, whether or not anything understood them. */
   topics: string[];
   value: string;
+  /**
+   * What the decoder registry made of it, or null if nothing there understood
+   * it. Null is a normal outcome — most contracts on the network are not ones
+   * this example has a decoder for — and the structural `topics` above are
+   * what gets shown in that case.
+   */
+  decoded: DecodedEvent | null;
 };
 
 export type Step = {
@@ -293,15 +302,24 @@ function diffFields(before: EntryFields | null, after: EntryFields | null): Fiel
 
 function describeEvent(event: xdr.ContractEvent, stage: string): TraceEvent {
   const body = event.body().v0();
-  const contractId = event.contractId();
+  const rawContractId = event.contractId();
+  const contractId = rawContractId
+    ? Address.contract(Buffer.from(rawContractId as unknown as Uint8Array)).toString()
+    : null;
+
   return {
     stage,
-    contractId: contractId
-      ? Address.contract(Buffer.from(contractId as unknown as Uint8Array)).toString()
-      : null,
+    contractId,
     type: event.type().name.replace("contractEventType", "").toLowerCase(),
     topics: body.topics().map((topic) => describeScVal(topic, 64)),
     value: describeScVal(body.data(), 96),
+    // The registry is handed the raw ScVals rather than the strings above:
+    // decoding a rendering would be decoding this file's opinion.
+    decoded: decoders.decode({
+      contractId,
+      topics: body.topics(),
+      data: body.data(),
+    }),
   };
 }
 

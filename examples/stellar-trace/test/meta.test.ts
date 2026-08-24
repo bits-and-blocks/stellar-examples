@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { decodeTransaction, MetaError, type EntryChange } from "../src/meta/decode.js";
-import { formatStroops } from "../src/meta/entries.js";
+import { formatStroops } from "../src/format.js";
 import { renderTransaction } from "../src/meta/render.js";
 import type { TransactionRecord } from "../src/meta/decode.js";
 
