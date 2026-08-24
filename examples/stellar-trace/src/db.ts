@@ -259,6 +259,45 @@ export class TraceStore {
     };
   }
 
+  /**
+   * The newest transactions stored, for finding one worth tracing.
+   *
+   * The only query in this file that exists for a person rather than for the
+   * loop. Grouped by transaction rather than listed by event, because one
+   * transaction routinely emits several matching events and a list of the same
+   * hash four times over is not a list of choices.
+   */
+  recentTransactions(limit: number): Array<{
+    txHash: string;
+    ledger: number;
+    ledgerClosedAt: string;
+    events: number;
+  }> {
+    return this.db
+      .prepare<[number], {
+        tx_hash: string;
+        ledger: number;
+        ledger_closed_at: string;
+        events: number;
+      }>(
+        `SELECT tx_hash,
+                MAX(ledger)           AS ledger,
+                MAX(ledger_closed_at) AS ledger_closed_at,
+                COUNT(*)              AS events
+           FROM events
+          GROUP BY tx_hash
+          ORDER BY ledger DESC
+          LIMIT ?`,
+      )
+      .all(limit)
+      .map((row) => ({
+        txHash: row.tx_hash,
+        ledger: row.ledger,
+        ledgerClosedAt: row.ledger_closed_at,
+        events: row.events,
+      }));
+  }
+
   /** Every stored event id, in ledger order. Used by the restart check. */
   eventIds(): string[] {
     return this.db

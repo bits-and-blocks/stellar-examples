@@ -12,6 +12,8 @@
     "//": "`build` typechecks rather than emitting: nothing here is published, and the repo's generic matrix runs `npm run build --if-present`, so this is where a type error gets caught in CI.",
     "build": "tsc --noEmit",
     "ingest": "tsx src/bin/ingest.ts",
+    "trace": "tsx src/bin/trace.ts",
+    "recent": "tsx scripts/recent.ts",
     "test": "node --import tsx --test test/*.test.ts",
     "check:restart": "tsx scripts/check-restart.ts"
   },

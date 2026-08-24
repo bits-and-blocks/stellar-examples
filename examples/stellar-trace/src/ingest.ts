@@ -22,6 +22,7 @@ import type { TraceConfig } from "./config.js";
 import type { Gap, TraceStore } from "./db.js";
 import type { Logger } from "./log.js";
 import { NETWORK_PASSPHRASE } from "./network.js";
+import { EXIT } from "./exit.js";
 import { RpcError, type EventSource, type RawEvent } from "./rpc.js";
 import { cursorForLedger, ledgerOf } from "./toid.js";
 
@@ -75,12 +76,7 @@ export class IngestError extends Error {
 const PAGE_LIMIT_REFUSED = -32001;
 const MIN_PAGE_LIMIT = 100;
 
-export const EXIT = {
-  usage: 2,
-  wrongNetwork: 3,
-  retentionGap: 4,
-  filterMismatch: 5,
-} as const;
+export { EXIT } from "./exit.js";
 
 /**
  * Refuse to run against anything but testnet, and report the window we can see.
