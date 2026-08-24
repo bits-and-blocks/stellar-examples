@@ -555,6 +555,50 @@ Two decisions inside the registry are worth knowing about:
   asset would be. Returning null hands the event back to be shown structurally.
   Decoding it anyway would put a confident wrong sentence on the screen.
 
+### It has been done once already
+
+[`src/decoders/orderbook.ts`](src/decoders/orderbook.ts) reads a second
+contract: an order book busy on testnet, emitting `rested`, `settled` and
+`top_changed`. It is not a token, it is nobody's standard, and this repository
+did not deploy it — which makes it a fair test of what adding a contract costs.
+The answer was one new file and two lines in
+[`index.ts`](src/decoders/index.ts). **No file in `src/` outside
+`src/decoders/` changed**, and `git diff --stat` says so.
+
+Nothing else had to arrive with it, either. Those events were already sitting
+in the transaction meta captured for the offline demo, undecoded, so the new
+decoder lit them up in a `--offline` trace with no recapture and no config
+change:
+
+```
+  top_changed  best tick on market 1 (side true) moved 18053 -> 18056
+               field names corroborated against this contract's own storage keys
+               the two ticks are the before and after of this contract's BestTick entry
+  …
+  ~ contract data CDX3W…U2RO · ["BestTick", 1, true]  (updated)
+      value: {empty: false, tick: 18053}  ->  {empty: false, tick: 18056}
+```
+
+Which is also how the field names were arrived at, since this contract
+publishes no schema. Each one was corroborated against the contract's *own
+storage keys*, read out of the same transactions that emitted the events: an
+event carrying `[account, 1787146455005, true, 18038, …]` sits beside a
+storage key `["Order", 1, account, 1787146455005]` and another reading
+`["Level", 1, true, 18038]`. Market, account, order, side and tick each appear
+on both sides of that comparison. The two values that appear in no key are
+kept, shown in the order they arrived, and labelled unnamed — inventing names
+for them would be the confident wrong sentence this registry exists to avoid.
+
+`top_changed` is the one whose every field is accounted for, and the trace
+above shows why: the ticks the event claims are the before and after of the
+contract's `BestTick` entry in the same transaction. [A
+test](test/orderbook.test.ts) asserts that correspondence against the committed
+fixture rather than trusting the comment — this example's own thesis, turned on
+a contract nobody here wrote.
+
+Registered under an exact contract id rather than the wildcard the token
+decoders use: a standard applies to every deployment, and this applies to one.
+
 ### The asset is checked, not believed
 
 A four-topic transfer names its asset in the last topic, and any contract can
@@ -674,7 +718,7 @@ x no transaction 00000000…00000000 on this RPC server.
 ## What this does not do
 
 - **Decode events it has no decoder for.** The registry covers the token
-  interface. Everything else is shown structurally — topics and value, as they
+  interface and one order book contract. Everything else is shown structurally — topics and value, as they
   are — rather than guessed at. Adding a contract is
   [two files in one directory](#teaching-it-what-the-events-mean).
 - **Decode on the way in.** Events are stored as the XDR they arrived as, and
@@ -720,6 +764,7 @@ src/
     registry.ts        ** (contract, topic[0]) -> a decoder. Knows no tokens **
     sac.ts             the token interface: transfer, mint, burn, clawback,
                        fee, approve — and the SAC derivation that checks them
+    orderbook.ts       a second contract, added later: what a repoint costs
     types.ts           what a decoder is handed and must return
     index.ts           the default registry: one line per decoder
   offline/
