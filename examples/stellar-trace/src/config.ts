@@ -44,33 +44,41 @@ export function loadConfig(path: string = DEFAULT_CONFIG_PATH): TraceConfig {
     throw new ConfigError(`could not read ${absolute}: ${reason}`);
   }
 
+  return parseConfig(absolute, parsed);
+}
+
+/**
+ * The validation `loadConfig` does once it has parsed JSON in hand — split
+ * out so a host that cannot read `trace.config.json` off disk at request
+ * time (a serverless bundle, say) can hand it JSON it imported statically
+ * instead, and get the same checked `TraceConfig` back.
+ */
+export function parseConfig(path: string, parsed: TraceConfigFile): TraceConfig {
   if (!Array.isArray(parsed.filters)) {
-    throw new ConfigError(`${absolute}: "filters" must be an array`);
+    throw new ConfigError(`${path}: "filters" must be an array`);
   }
 
   const pageLimit = parsed.pageLimit ?? RPC_LIMITS.pageLimit;
   if (!Number.isInteger(pageLimit) || pageLimit < 1 || pageLimit > RPC_LIMITS.pageLimit) {
-    throw new ConfigError(
-      `${absolute}: "pageLimit" must be between 1 and ${RPC_LIMITS.pageLimit}`,
-    );
+    throw new ConfigError(`${path}: "pageLimit" must be between 1 and ${RPC_LIMITS.pageLimit}`);
   }
 
   const pollIntervalMs = parsed.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   if (!Number.isInteger(pollIntervalMs) || pollIntervalMs < 0) {
-    throw new ConfigError(`${absolute}: "pollIntervalMs" must be a non-negative integer`);
+    throw new ConfigError(`${path}: "pollIntervalMs" must be a non-negative integer`);
   }
 
   const rpcUrl = parsed.rpcUrl ?? DEFAULT_RPC_URL;
   try {
     new URL(rpcUrl);
   } catch {
-    throw new ConfigError(`${absolute}: "rpcUrl" is not a URL: ${rpcUrl}`);
+    throw new ConfigError(`${path}: "rpcUrl" is not a URL: ${rpcUrl}`);
   }
 
   const filters = encodeFilters(parsed.filters);
 
   return {
-    path: absolute,
+    path,
     rpcUrl,
     pageLimit,
     pollIntervalMs,
