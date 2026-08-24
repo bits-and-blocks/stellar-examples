@@ -1,4 +1,5 @@
 {
+  "outputDirectory": "public",
   "functions": {
     "api/index.ts": {
       "includeFiles": "{fixtures/**,demo.db}"
