@@ -21,6 +21,13 @@ under [Conformance](#conformance).
 | `bldimg` | `docker.io/stellar/stellar-cli@sha256:7040ab64…` |
 | `source_sha256` | `3f0417b78aead1366ab4b6e4ddf32fee69cb884b4352eb7e99db21b53aab7dd3` |
 
+## Demo
+
+A verified contract, then the same verifier refusing one that records a source
+archive it was never built from.
+
+https://github.com/user-attachments/assets/f82e5cd2-3b02-4d83-b2d8-64b5fdaccc51
+
 ## Run it
 
 You need **Docker** and **Node 20+**. You do not need Rust, cargo, or the
