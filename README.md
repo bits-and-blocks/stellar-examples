@@ -29,4 +29,4 @@ Every example targets **testnet only**. Network passphrases are pinned to testne
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE). Individual examples may carry their own LICENSE file where they were imported from a standalone repo; those take precedence for that directory.
+Apache 2.0 — see [LICENSE](LICENSE). It covers every example in this repo.

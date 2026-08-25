@@ -381,7 +381,3 @@ Friendbot being up, so a network hiccup would show as a broken build.
 - **Stellar** — [Stellar Asset Contract](https://developers.stellar.org/docs/tokens/stellar-asset-contract) ·
   [JS SDK](https://stellar.github.io/js-stellar-sdk/) ·
   [Soroban RPC](https://developers.stellar.org/docs/data/apis/rpc)
-
-## License
-
-Apache 2.0 — see the [LICENSE](../../LICENSE) at the repository root.
