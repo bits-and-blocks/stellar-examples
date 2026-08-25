@@ -93,11 +93,15 @@ test("a whole decoder can be added without touching anything outside the registr
 });
 
 test("no code outside src/decoders knows what a transfer is", () => {
-  // Event names the SAC decoders own. If one of these turns up in code
-  // anywhere else, the ingest or the query path has learned a token's
-  // vocabulary, and pointing this example at another contract stopped being a
-  // change confined to one directory.
-  const owned = ["transfer", "mint", "burn", "clawback", "approve"];
+  // Event names the decoders own — the token interface, and the order book
+  // contract added later. If one of these turns up in code anywhere else, the
+  // ingest or the query path has learned a contract's vocabulary, and pointing
+  // this example at another one stopped being a change confined to one
+  // directory.
+  const owned = [
+    "transfer", "mint", "burn", "clawback", "approve",
+    "rested", "settled", "top_changed",
+  ];
 
   const offenders: string[] = [];
   for (const file of sourceFiles(join(ROOT, "src")).concat(sourceFiles(join(ROOT, "scripts")))) {

@@ -6,12 +6,14 @@
  * outside `src/decoders/` needs to know it happened — which is the property
  * the repoint depends on, and is checked by a test rather than promised.
  */
+import { registerOrderBookDecoders } from "./orderbook.js";
 import { DecoderRegistry } from "./registry.js";
 import { registerSacDecoders } from "./sac.js";
 
 export function defaultRegistry(): DecoderRegistry {
   const registry = new DecoderRegistry();
   registerSacDecoders(registry);
+  registerOrderBookDecoders(registry);
   return registry;
 }
 
