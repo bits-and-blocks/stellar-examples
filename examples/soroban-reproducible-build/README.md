@@ -4,7 +4,7 @@ Proves that a contract deployed on testnet was built from the source it claims,
 by rebuilding it in a container pinned to an immutable digest and comparing the
 resulting Wasm hash to the bytes the network is actually running.
 
-**[Demo video](https://github.com/user-attachments/assets/f82e5cd2-3b02-4d83-b2d8-64b5fdaccc51)**
+https://github.com/user-attachments/assets/f82e5cd2-3b02-4d83-b2d8-64b5fdaccc51
 
 The build records how it was made, in [SEP-58](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0058.md)
 vocabulary, inside the Wasm itself. So the check does not depend on this repo:

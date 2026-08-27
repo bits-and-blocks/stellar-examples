@@ -4,7 +4,7 @@ Email login to a funded testnet contribution in one flow: create an embedded
 Stellar wallet from an email address, add a USDC trustline, and send USDC to a
 pool through the Stellar Asset Contract, with no seed phrase at any point.
 
-**[Live demo](https://privy-stellar-onboarding.vercel.app/)**
+https://privy-stellar-onboarding.vercel.app/
 
 The same flow, driven by a wallet the user already has, is the sibling example
 [`stellar-wallets-kit-onboarding`](../stellar-wallets-kit-onboarding). The two

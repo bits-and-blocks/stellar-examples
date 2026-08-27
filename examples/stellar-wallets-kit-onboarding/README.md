@@ -5,7 +5,7 @@ flow: connect Freighter or xBull through Stellar Wallets Kit, add a USDC
 trustline, and send USDC to a pool through the Stellar Asset Contract, with
 the key never leaving the extension.
 
-**[Live demo](https://stellar-wallets-kit-onboarding.vercel.app/)**
+https://stellar-wallets-kit-onboarding.vercel.app/
 
 The same flow, driven by an email address and a custodied embedded wallet
 instead, is the sibling example

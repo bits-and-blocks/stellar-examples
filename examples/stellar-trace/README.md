@@ -3,7 +3,7 @@
 An indexer over Stellar contract events, and a reader for the state each one
 moved.
 
-**[Live demo](https://stellar-trace-app.vercel.app/)**
+https://stellar-trace-app.vercel.app/
 
 **`ingest`** polls `getEvents` from a ledger you choose, writes the events into
 SQLite **undecoded**, and keeps a cursor so that killing it and starting it
