@@ -2,8 +2,10 @@
 
 From a wallet the user already has to a funded testnet contribution in one
 flow: connect Freighter or xBull through Stellar Wallets Kit, add a USDC
-trustline, and send USDC to a pool through the Stellar Asset Contract — with
+trustline, and send USDC to a pool through the Stellar Asset Contract, with
 the key never leaving the extension.
+
+https://stellar-wallets-kit-onboarding.vercel.app/
 
 The same flow, driven by an email address and a custodied embedded wallet
 instead, is the sibling example
@@ -12,7 +14,7 @@ reading against each other: see [The other half of this
 pair](#the-other-half-of-this-pair).
 
 **Testnet only.** No real money is involved, and no mainnet configuration path
-exists — see [Testnet only](#testnet-only).
+exists; see [Testnet only](#testnet-only).
 
 ---
 
@@ -43,10 +45,10 @@ The page walks through seven steps and each one tells you what it did:
 
 | # | Step | What happens |
 | --- | --- | --- |
-| 1 | Your connected wallet | Already done by the time you arrive — the extension brought its own account |
+| 1 | Your connected wallet | Already done by the time you arrive; the extension brought its own account |
 | 2 | Get some faucet XLM | Friendbot funds the account |
 | 3 | Check that signing works | An XLM payment to a fixed testnet address, to prove the signature is accepted |
-| 4 | Switch on USDC | `changeTrust` — reserves 0.5 XLM; the switch turns it back off (`limit: "0"`), releasing the reserve. A balance still held is burned to the issuer in the same transaction, since the protocol will not drop a trustline that holds anything |
+| 4 | Switch on USDC | `changeTrust`, which reserves 0.5 XLM; the switch turns it back off (`limit: "0"`), releasing the reserve. A balance still held is burned to the issuer in the same transaction, since the protocol will not drop a trustline that holds anything |
 | 5 | Claim some faucet USDC | Circle's [testnet faucet](https://faucet.circle.com), 20 USDC per 2 hours |
 | 6 | Contribute | `transfer` on the Stellar Asset Contract |
 | 7 | See what a failure looks like | Two deliberate failures, with and without preflight |
@@ -57,7 +59,7 @@ that can turn it into a signed one.
 
 ## Configuration
 
-All configuration is public by design — there is no server, no API route, and
+All configuration is public by design: there is no server, no API route, and
 no credential of any kind. Signing happens in the extension.
 
 | Variable | Default | Purpose |
@@ -74,7 +76,7 @@ Network settings are deliberately absent from the environment. See
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Start the dev server |
-| `npm run build` | Production build — takes no secrets and no configuration |
+| `npm run build` | Production build; takes no secrets and no configuration |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run verify:contribution` | Run the contribution path against live testnet |
@@ -99,7 +101,7 @@ await swk.signTransaction(xdr, { … }); // the approval prompt
 Two mechanics are worth knowing before you write that file yourself.
 
 **The import has to be dynamic.** The Kit registers the custom elements for its
-modal as a side effect of being imported, which needs a DOM — and Next renders
+modal as a side effect of being imported, which needs a DOM, and Next renders
 client components on the server before they ever reach a browser. A top-level
 `import` of the package breaks the build rather than the page. It is loaded on
 first use instead, and initialised exactly once.
@@ -112,7 +114,7 @@ nothing else is bundled.
 There is also one packaging trap. `preact` appears in this project's
 `package.json` and nothing here imports it: it is there because the Kit's modal
 is built on Preact through `htm`, and npm hoists `htm` to the top of
-`node_modules` while leaving `preact` nested under the Kit — so `htm/preact`
+`node_modules` while leaving `preact` nested under the Kit, so `htm/preact`
 cannot resolve it and the build fails with `Can't resolve 'preact'`. Declaring
 it hoists it too. Nothing else about it is load-bearing.
 
@@ -134,8 +136,8 @@ invisible until Horizon rejects the result. `kitSigner` checks all three:
   here is built against the testnet passphrase. A wallet that will not say
   which network it is on is not treated as evidence of the wrong one.
 
-A declined prompt is not in that list. It is the ordinary path — somebody
-deciding not to approve something — and it is reported as such rather than as a
+A declined prompt is not in that list. It is the ordinary path, somebody
+deciding not to approve something, and it is reported as such rather than as a
 fault.
 
 ### The one thing that bites
@@ -149,7 +151,7 @@ await horizon.submitTransaction(signed);   // ✅
 await horizon.submitTransaction(tx);       // ❌ unsigned, and it looks fine
 ```
 
-The wallet never sees your `Transaction` — it sees a string. What comes back is
+The wallet never sees your `Transaction`; it sees a string. What comes back is
 parsed into a new object, and the one you built is still unsigned. This is the
 quiet version of the bug, because a signer that mutates in place (a local
 `Keypair`, or a raw-hash service like Privy's) makes exactly the same code
@@ -167,9 +169,9 @@ type Signer = {
 ```
 
 The level it is drawn at is set by what an extension can do. It will not hash
-for you, and it will not let you hash for it — the key never leaves. So the
-interface is transaction in, signed transaction out, and nothing lower is
-available. A curve-level signer can always be lifted to this shape; an
+for you, and it will not let you hash for it, because the key never leaves.
+So the interface is transaction in, signed transaction out, and nothing lower
+is available. A curve-level signer can always be lifted to this shape; an
 extension cannot be pushed down to a lower one.
 
 Everything under `lib/stellar/` takes a `Signer` and has no idea what is behind
@@ -182,7 +184,7 @@ Holding an asset on Stellar is an explicit act, so contributing is four steps,
 not one, and the app shows all four:
 
 1. **Trustline.** `changeTrust` to the USDC issuer. Until this exists the wallet
-   cannot receive the asset *at all* — the account has no place to put it.
+   cannot receive the asset *at all*: the account has no place to put it.
    Costs 0.5 XLM held in reserve, not spent.
 2. **Acquire USDC.** Circle's testnet faucet.
 3. **Preflight.** Read on-chain state and refuse early if it cannot work.
@@ -197,7 +199,7 @@ exist instead of quietly talking to the wrong contract.
 **Sign after preparing, never before.** Simulation determines the footprint and
 resource fees, and assembling those produces a *different* transaction with a
 different hash. A signature taken before `assembleTransaction` is dead on
-arrival — and with a wallet in the loop it is worse than dead, because the user
+arrival, and with a wallet in the loop it is worse than dead, because the user
 approved something and got nothing for it.
 
 **Keep `from` equal to the transaction source.** The SAC calls `require_auth` on
@@ -224,12 +226,12 @@ state directly means the user is told which account is short and by how much.
 | `submission-failed` | send / poll | that signing worked and the network did not accept it |
 
 `SigningError` is kept apart from all four. Those classify what the *network*
-refused; a `SigningError` is about the wallet — a prompt declined, an account
+refused; a `SigningError` is about the wallet: a prompt declined, an account
 switched underneath, a signature that is not the shape it must be.
 
 Step 7 has two buttons that send the same impossible contribution (999999 USDC)
 and differ only in whether preflight runs, so you can see both shapes of error.
-Note that `skipPreflight` does not *induce* a failure — it removes an early
+Note that `skipPreflight` does not *induce* a failure; it removes an early
 check, and a contribution that would have succeeded still succeeds without it.
 
 ## The other half of this pair
@@ -241,12 +243,12 @@ is who holds the key.
 
 | | This example | `privy-stellar-onboarding` |
 | --- | --- | --- |
-| Holds the key | The extension — nothing here ever sees it | Privy, custodied |
+| Holds the key | The extension; nothing here ever sees it | Privy, custodied |
 | Signing API accepts | A transaction, as XDR | 32 bytes |
 | …and returns | Signed XDR, as a new transaction | 64 raw bytes, attached in place |
 | Who approves | The user, in the extension, every time | Nobody; it signs on request |
 | Configuration | None | A Privy app ID, and an allowed-origins list |
-| Step 1 | Already done — the wallet brought an account | Create the embedded wallet |
+| Step 1 | Already done; the wallet brought an account | Create the embedded wallet |
 | Onboarding cost to the user | Install an extension, fund an account | An email address |
 
 Which one you want is a product question, not a technical one. This one asks
@@ -254,7 +256,7 @@ more of the user up front and gives them custody; the other asks for an email
 address and takes custody on their behalf.
 
 If you want *both* in one app, note that the interface to draw them behind is
-this example's `Signer` — the higher of the two levels. Drawn at `signHash`,
+this example's `Signer`, the higher of the two levels. Drawn at `signHash`,
 the Kit could not implement it at all.
 
 ## Testnet only
@@ -262,7 +264,7 @@ the Kit could not implement it at all.
 The network passphrase, Horizon URL, Soroban RPC URL and Friendbot URL are
 literals in [`lib/stellar/network.ts`](lib/stellar/network.ts). None is read
 from the environment, so no `.env` file, build flag or deployment setting can
-point this app at mainnet — changing networks requires editing that file.
+point this app at mainnet; changing networks requires editing that file.
 
 The passphrase is load-bearing rather than cosmetic: it is mixed into the
 payload that `Transaction.hash()` produces, so a transaction built here is only
@@ -270,22 +272,22 @@ ever valid on testnet. Submitted to mainnet it would be rejected as
 `tx_bad_auth` rather than succeeding against real funds.
 
 Your wallet's network is the one thing here that is not ours to pin, so it is
-checked instead — at connect time, once, before anything asks for a signature.
+checked instead, at connect time, once, before anything asks for a signature.
 
 ## Project structure
 
 ```
-app/                    Next.js App Router — one page, one providers file
+app/                    Next.js App Router: one page, one providers file
 components/             Presentational components, no styling system
 lib/
   signing/
     signer.ts           The Signer interface
     wallets-kit.ts      Delegates to the extension, verifies the result
   wallet/
-    session.ts          useSession() — what the page consumes
+    session.ts          useSession(): what the page consumes
     kit-session.tsx     Connect, restore, disconnect
   stellar/
-    network.ts          Testnet literals — the only network config
+    network.ts          Testnet literals: the only network config
     assets.ts           USDC, SAC derivation, stroop conversion
     contribute.ts       preflight + transfer
     errors.ts           The four failure outcomes
@@ -304,13 +306,13 @@ npm run verify:contribution
 
 [`scripts/verify-contribution.mts`](scripts/verify-contribution.mts) runs the
 real `contribute`, `addTrustline` and `preflight` against testnet, driven by a
-local keypair rather than an extension — there is no headless Freighter, and no
+local keypair rather than an extension: there is no headless Freighter, and no
 way to script an approval prompt.
 
 So what it covers is the contribution path, which is most of the app, plus the
 one Kit-shaped property that survives without a wallet: `signTransaction`
 returns a new transaction, and the argument is left unsigned. What it does not
-cover is the wallet itself — the approval, and the three checks in `kitSigner`
+cover is the wallet itself: the approval, and the three checks in `kitSigner`
 that only a misbehaving extension could trigger.
 
 ```
@@ -339,7 +341,7 @@ Friendbot being up, so a network hiccup would show as a broken build.
 | Symptom | Cause |
 | --- | --- |
 | The picker opens and lists nothing | Neither Freighter nor xBull is installed, or the extension is disabled for this site |
-| Connecting is refused straight away | The extension is on Public — switch it to Test Net |
+| Connecting is refused straight away | The extension is on Public; switch it to Test Net |
 | "Your wallet signed with a different account" | The active account was switched in the extension after connecting. Switch back, or disconnect and reconnect |
 | A prompt never appears | Some extensions open their approval in a popup the browser suppressed; check for a blocked-popup indicator |
 | Friendbot funding fails | Friendbot rate-limits per address; wait, or use an already-funded account |
@@ -350,7 +352,7 @@ Friendbot being up, so a network hiccup would show as a broken build.
 
 - **Mainnet.** Testnet only, enforced structurally.
 - **A backend.** No server, no database. The activity log and sent lists survive
-  a reload in `localStorage`, but nothing reads them as truth — the chain is the
+  a reload in `localStorage`, but nothing reads them as truth: the chain is the
   only record, and every entry links out to it.
 - **Wallets beyond Freighter and xBull.** The Kit ships modules for many more,
   including WalletConnect, Ledger and Trezor. Registering them is a one-line
@@ -361,23 +363,23 @@ Friendbot being up, so a network hiccup would show as a broken build.
 - **A design system.** No component library, no state management library.
 - **Multi-asset support.** One asset, one pool, one path through the app.
 - **Soroban auth entries.** Every signature here is a transaction signature.
-  Signing a `SorobanAuthorizationEntry` separately — which you need the moment
-  the SAC's `from` is not the transaction source — is a different call, and not
+  Signing a `SorobanAuthorizationEntry` separately, which you need the moment
+  the SAC's `from` is not the transaction source, is a different call, and not
   every wallet supports it.
 - **Retry and resubmission logic** beyond surfacing the error. A production flow
   would handle `tx_bad_seq` and `TRY_AGAIN_LATER` with backoff.
 - **A unit test suite.** The verification script hits live testnet and is the
-  only test here — mocking Horizon and Soroban would test the mocks.
+  only test here; mocking Horizon and Soroban would test the mocks.
 
 ## Resources
 
-- **Stellar Wallets Kit** — [docs](https://stellarwalletskit.dev) ·
+- **Stellar Wallets Kit**: [docs](https://stellarwalletskit.dev) ·
   [GitHub](https://github.com/Creit-Tech/Stellar-Wallets-Kit) ·
   [npm](https://www.npmjs.com/package/@creit.tech/stellar-wallets-kit)
-- [SEP-43](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0043.md)
-  — the wallet interface the Kit's modules implement, and the reason
+- [SEP-43](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0043.md):
+  the wallet interface the Kit's modules implement, and the reason
   `signTransaction` takes the shape it does
-- **Wallets** — [Freighter](https://freighter.app) · [xBull](https://xbull.app)
-- **Stellar** — [Stellar Asset Contract](https://developers.stellar.org/docs/tokens/stellar-asset-contract) ·
+- **Wallets**: [Freighter](https://freighter.app) · [xBull](https://xbull.app)
+- **Stellar**: [Stellar Asset Contract](https://developers.stellar.org/docs/tokens/stellar-asset-contract) ·
   [JS SDK](https://stellar.github.io/js-stellar-sdk/) ·
   [Soroban RPC](https://developers.stellar.org/docs/data/apis/rpc)
