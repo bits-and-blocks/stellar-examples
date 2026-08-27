@@ -1,8 +1,10 @@
 # soroban-reproducible-build
 
-Proves that a contract deployed on testnet was built from the source it claims —
+Proves that a contract deployed on testnet was built from the source it claims,
 by rebuilding it in a container pinned to an immutable digest and comparing the
 resulting Wasm hash to the bytes the network is actually running.
+
+**[Demo video](https://github.com/user-attachments/assets/f82e5cd2-3b02-4d83-b2d8-64b5fdaccc51)**
 
 The build records how it was made, in [SEP-58](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0058.md)
 vocabulary, inside the Wasm itself. So the check does not depend on this repo:
@@ -31,7 +33,7 @@ https://github.com/user-attachments/assets/f82e5cd2-3b02-4d83-b2d8-64b5fdaccc51
 ## Run it
 
 You need **Docker** and **Node 20+**. You do not need Rust, cargo, or the
-Stellar CLI — if the host could contribute to the build, a passing check would
+Stellar CLI. If the host could contribute to the build, a passing check would
 only tell you something about your own machine.
 
 Precisely, the scripts need `bash` (3.2 or newer, so stock macOS is fine),
@@ -39,7 +41,7 @@ Precisely, the scripts need `bash` (3.2 or newer, so stock macOS is fine),
 up front and name what is missing rather than failing part-way through.
 
 **On Windows** you need either **Git Bash** or **WSL** on PATH, because `bash`
-is what npm invokes. Which one you get differs by shell — `npm run` from
+is what npm invokes. Which one you get differs by shell: `npm run` from
 PowerShell typically lands in WSL, where Node appears as `node.exe` rather than
 `node`. Both are handled; you should not have to care which you are in. If
 neither is installed, `npm run` fails with `bash: command not found`, and
@@ -85,14 +87,14 @@ Everything below the first line is read from the network, not from this repo.
    the `contractmetav0` entries. The SEP-58 fields are pulled out and checked
    against the spec's format regexes; a malformed value is refused rather than
    repaired.
-2. **Check the image against an allowlist.** Not optional paranoia — see
+2. **Check the image against an allowlist.** Not optional paranoia; see
    [Trust](#what-this-does-not-prove).
 3. **Fetch the deployed Wasm** and hash it.
 4. **Obtain the source archive** named by `source_sha256`, and confirm the bytes
    hash to that value.
 5. **Extract it**, requiring exactly one top-level directory, which becomes the
    `/source` mount.
-6. **Replay the recorded build** — `bldarg` entries in order (defaulting to
+6. **Replay the recorded build**: `bldarg` entries in order (defaulting to
    `contract build`), then `bldopt` entries, then every recorded field passed
    back through `--meta`.
 7. **Compare** the rebuilt hash to the deployed hash.
@@ -126,7 +128,7 @@ completely different things:
 
 | Exit | Case | What it means |
 | --- | --- | --- |
-| `3` | **No build metadata** | The contract records no SEP-58 fields. Normal for anything built before the SEP — **not** evidence of wrongdoing, and the verifier says so. |
+| `3` | **No build metadata** | The contract records no SEP-58 fields. Normal for anything built before the SEP, and **not** evidence of wrongdoing, and the verifier says so. |
 | `7` | **Archive doesn't match `source_sha256`** | The source you supplied isn't the source the contract names. Rebuilding it would answer a question nobody asked. |
 | `9` | **Rebuild differs** | The archive *is* the recorded one, it built in the recorded image with the recorded flags, and the bytes still disagree. The contract's metadata does not describe how it was built. |
 | `5` | `bldimg` not allowlisted | The contract names a build image this verifier hasn't vetted. |
@@ -135,8 +137,8 @@ completely different things:
 
 Exit `9` is the one worth dwelling on. The "lying" fixture was compiled from
 *modified* source while recording the *honest* archive's hash. Its metadata is
-perfectly well-formed, its archive hashes correctly, every earlier check passes
-— and it is caught anyway, at the only step that can catch it. That is the
+perfectly well-formed, its archive hashes correctly, every earlier check passes,
+and it is caught anyway, at the only step that can catch it. That is the
 attack SEP-58 exists to detect, and it is reachable on demand:
 
 ```bash
@@ -166,8 +168,8 @@ Two points where the spec is easy to get wrong, and A1 did:
 
 **No `source_uri`, by design.** SEP-58 §2 supports two modes, and we use the
 content-addressed one: `source_sha256` alone, with the archive obtained out of
-band. The alternative would be pointing at a durable release asset — the spec is
-explicit that a forge's *on-the-fly* source archives don't qualify, since those
+band. The alternative would be pointing at a durable release asset, but the
+spec is explicit that a forge's *on-the-fly* source archives don't qualify, since those
 bytes can change. Our archive is committed at
 [sources/](sources/), and `verify.sh` finds it by hash. The download path is
 implemented and used for any contract that does record a `source_uri`.
@@ -180,7 +182,7 @@ verifier than for our own contract, since we don't control what strangers commit
 ## Reproducing the archive
 
 SEP-58 requires the producer to be able to hand over the exact archive bytes
-`source_sha256` names — either by keeping that file forever or regenerating it
+`source_sha256` names, either by keeping that file forever or regenerating it
 identically. We regenerate:
 
 ```bash
@@ -189,8 +191,8 @@ npm run archive
 
 That was fussier than expected. `git archive` stamps entries with the *current
 time* when handed a tree, so two runs a second apart produce two different
-hashes, and its `--mtime` flag isn't honoured by git 2.44. Host `tar` varies too
-— GNU, bsdtar and Windows builds disagree on defaults. So the archive is built
+hashes, and its `--mtime` flag isn't honoured by git 2.44. Host `tar` varies too:
+GNU, bsdtar and Windows builds disagree on defaults. So the archive is built
 by GNU tar *inside the pinned image*, with mtime, uid/gid, ordering and format
 all fixed explicitly, from a `git ls-files` list so only tracked files are
 included.
@@ -204,7 +206,7 @@ included.
   not that those bytes behave. A hostile image can emit attacker-chosen Wasm
   from any source and make verification pass. This is why `verify.sh` ships an
   allowlist (`docker.io/stellar/stellar-cli@…`) and requires `--any-image` to
-  step outside it — SEP-58 §Security Concerns is explicit that verifiers should
+  step outside it; SEP-58 §Security Concerns is explicit that verifiers should
   not run arbitrary images.
 - **That a green result came from an honest verifier.** Anyone can publish false
   positives. The spec's answer is to weigh results by verifier reputation and
@@ -216,10 +218,10 @@ included.
 on every PR touching this directory, plus weekly:
 
 1. rebuild in the pinned image
-2. `check-deployed-hash.mjs` — our source vs our deployment, read straight from
+2. `check-deployed-hash.mjs`: our source vs our deployment, read straight from
    the `contract_code` ledger entry
-3. `verify.sh` — the same conclusion reached the general way, from metadata alone
-4. `check-negative-fixtures.sh` — the refusals
+3. `verify.sh`: the same conclusion reached the general way, from metadata alone
+4. `check-negative-fixtures.sh`: the refusals
 5. contract unit tests
 
 Steps 2 and 3 overlap deliberately. Step 2 is what A1 built: a direct
@@ -251,7 +253,7 @@ this example at mainnet.
 ## Layout
 
 ```
-build.conf                       the pin — bldimg, bldopt, archive naming
+build.conf                       the pin: bldimg, bldopt, archive naming
 contract/                       the subject contract (Rust, soroban-sdk 27)
   Cargo.lock                    committed; the build runs --locked
 sources/                        the SEP-58 source archive, found by hash
@@ -276,8 +278,8 @@ what this example exists to eliminate.
 
 ## References
 
-- [SEP-58 v0.6.0](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0058.md) — the vocabulary this example implements
-- [SEP-55](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0055.md) — the attestation-based alternative; the two can coexist on one contract
-- [SEP-46](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0046.md) — the `contractmetav0` section the fields live in
-- [Contract source verification using Docker without attestation](https://github.com/orgs/stellar/discussions/1923) — the design discussion behind SEP-58
+- [SEP-58 v0.6.0](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0058.md): the vocabulary this example implements
+- [SEP-55](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0055.md): the attestation-based alternative; the two can coexist on one contract
+- [SEP-46](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0046.md): the `contractmetav0` section the fields live in
+- [Contract source verification using Docker without attestation](https://github.com/orgs/stellar/discussions/1923): the design discussion behind SEP-58
 - [`--meta` in `stellar contract build`](https://github.com/stellar/stellar-cli/issues/1605)

@@ -3,19 +3,21 @@
 An indexer over Stellar contract events, and a reader for the state each one
 moved.
 
+**[Live demo](https://stellar-trace-app.vercel.app/)**
+
 **`ingest`** polls `getEvents` from a ledger you choose, writes the events into
 SQLite **undecoded**, and keeps a cursor so that killing it and starting it
 again produces the same database as never having stopped.
 
 **`trace <tx-hash>`** takes one transaction and prints what it did to the
-ledger — every entry it touched, and what that entry held before and after.
+ledger: every entry it touched, and what that entry held before and after.
 
 **`serve`** is the same thing as a page: paste a hash, get the progression,
 with the indexed range stated on every view.
 
 The two are joined by a transaction hash and nothing else: the indexer says
 *that* a transfer happened, and the trace says what the ledger looked like on
-either side of it. Neither knows what a `transfer` means — that lives in
+either side of it. Neither knows what a `transfer` means; that lives in
 [one directory of decoders](#teaching-it-what-the-events-mean), which is what
 makes pointing this at another contract cheap.
 
@@ -34,7 +36,7 @@ needs no network and cannot use one.
 
 ## Run it
 
-You need **Node 20 or newer**. Nothing else — no Docker, no Rust, no Stellar
+You need **Node 20 or newer**. Nothing else: no Docker, no Rust, no Stellar
 CLI, no key of any kind. This program only reads.
 
 ```bash
@@ -54,7 +56,7 @@ npm run ingest -- --start-ledger latest-3000 --once
 That is 11,002 transfers, mints and burns from the last four hours of testnet,
 in `trace.db`. Drop `--once` and it keeps polling.
 
-Ctrl-C once and it finishes the page in flight, then says where it stopped —
+Ctrl-C once and it finishes the page in flight, then says where it stopped,
 the tidy stop. Ctrl-C again and it abandons the request instead of waiting for
 it. Neither is more correct than the other: both leave the database on a
 committed cursor, and the next run resumes from it.
@@ -70,14 +72,14 @@ npm run demo
 ```
 
 Ingests a committed slice of testnet into a fresh database, lists what it
-holds, and traces one transaction down to the ledger entries it moved — all
+holds, and traces one transaction down to the ledger entries it moved, all
 from `fixtures/`, none of it from a server.
 
 The interesting part is *how* it is offline. Each step is spawned with
 [`scripts/no-network.ts`](scripts/no-network.ts) imported ahead of it, which
 replaces `fetch` with something that throws. Everything this example could use
 to reach the network goes through `fetch`, so a green demo is not evidence that
-testnet happened to be up — it is evidence that nothing asked for it. Run the
+testnet happened to be up; it is evidence that nothing asked for it. Run the
 online path under the same loader and it fails immediately, which is how that
 guard is known to work.
 
@@ -120,7 +122,7 @@ npm run capture -- --ledgers 200 --transactions 25
 Whole `getEvents` responses, and the `getTransaction` results for the
 transactions they name, written to `fixtures/testnet-slice/` exactly as the
 server sent them. Nothing is decoded or reshaped on the way in, so a fixture is
-evidence rather than a summary — and it keeps working long after its ledgers
+evidence rather than a summary, and it keeps working long after its ledgers
 have left the RPC's seven-day window, which is the whole reason the demo uses
 one.
 
@@ -130,9 +132,9 @@ don't.
 ### Why the paging is re-derived rather than replayed
 
 A fixture holds real responses, but replay does not hand them back in the order
-they were recorded. It re-derives the two behaviours the loop depends on — a
+they were recorded. It re-derives the two behaviours the loop depends on (a
 cursor that is exclusive and advances across ledgers that matched nothing, and
-a scan that stops after 10,000 ledgers — and serves the captured events through
+a scan that stops after 10,000 ledgers), and serves the captured events through
 them.
 
 That is a deliberate line. A recorded request-and-response transcript can only
@@ -145,7 +147,7 @@ one, and ends with the same events in the database.
 What replay does *not* do is invent anything. It refuses a ledger outside the
 captured range in the same words the server uses, returns `NOT_FOUND` with that
 range for a hash it does not hold, and refuses outright to serve a fixture
-captured with different filters — because that would look like a quiet network
+captured with different filters, because that would look like a quiet network
 rather than a mismatch.
 
 ## Tracing one transaction
@@ -182,7 +184,7 @@ or `--json` for the same structure as data.
 
 **That hash stops working about a week after this was written**, for the reason
 the next section is about, and no README can promise otherwise. Any recent
-testnet transfer works, and the indexer is one way to find one — this is the
+testnet transfer works, and the indexer is one way to find one; this is the
 only place the two commands meet:
 
 ```bash
@@ -199,14 +201,14 @@ proof view around a call that does not exist.
 
 What does exist is the transaction's own meta. `getTransaction` returns
 `resultMetaXdr`, and inside it every entry the transaction touched appears
-twice — as it was and as it became. So the state is not looked up, it is read
+twice, as it was and as it became. So the state is not looked up, it is read
 back out of the record the network already wrote. That record is also the more
 convincing artifact: it is what the validators agreed on, not a later query
 against a node's current view.
 
 Three things about that encoding cost time if you meet them by surprise:
 
-- **A change list is flat, not paired.** An update is two entries — a
+- **A change list is flat, not paired.** An update is two entries: a
   `LEDGER_ENTRY_STATE` carrying the old value, then a `LEDGER_ENTRY_UPDATED`
   carrying the new one. A removal is a `STATE` and a `REMOVED` holding only a
   key. A creation stands alone. [`decode.ts`](src/meta/decode.ts) pairs them by
@@ -216,7 +218,7 @@ Three things about that encoding cost time if you meet them by surprise:
   exactly the 9.25 XLM of the payment, not 9.25 plus the 100-stroop fee. Fee
   charging happens in its own phase, whose entry changes live in the *ledger
   close* meta rather than the transaction's. All the transaction meta carries is
-  the CAP-67 `fee` event — and, for a Soroban transaction, a second one after
+  the CAP-67 `fee` event; and for a Soroban transaction, a second one after
   the operations that is *negative*, refunding the resource fee that was
   reserved but not spent.
 - **"Updated" does not mean "changed".** The meta records an update for every
@@ -257,7 +259,7 @@ This transaction is in the index — 1 matching event stored here.
       XLM balance    9,597.4914300  (95974914300)  →   9,599.4914300  (95994914300)
 ```
 
-It is `node:http` and server-rendered strings — no framework, no client-side
+It is `node:http` and server-rendered strings: no framework, no client-side
 JavaScript, no build step. Partly because the page is one form and one
 document, and partly because the thing on display is a state progression the
 network recorded: anything sitting between a reader and that is one more thing
@@ -267,7 +269,7 @@ demonstrable at an arbitrary hour.
 
 ### Deploying a frozen slice of it
 
-There is no live indexer to point a host at — `ingest` is a poll loop, and a
+There is no live indexer to point a host at: `ingest` is a poll loop, and a
 serverless platform gives it no process to poll from. What *can* be deployed
 is the offline path above, served read-only. [`api/index.ts`](api/index.ts) is
 that: the same [`createRequestListener`](src/web/server.ts) the CLI's `serve`
@@ -278,18 +280,18 @@ vercel   # from this directory, with Root Directory set here in a monorepo
 ```
 
 Nothing is read off disk at request time. The fixture and `trace.config.json`
-are imported as JSON — which `esbuild`, the bundler behind both `tsx` and
+are imported as JSON, which `esbuild`, the bundler behind both `tsx` and
 Vercel's function builder, resolves and inlines into the function at build
 time, the same guarantee a `.ts` import gets. A bundled *file path* doesn't
 get that guarantee across a monorepo's function-packaging rules, which is why
 this isn't done by shipping a prebuilt database file and hoping it lands
-somewhere findable — a first attempt at exactly that hit `ENOENT` in
+somewhere findable; a first attempt at exactly that hit `ENOENT` in
 production. The one thing that can't be inlined that way is the SQLite
 database itself: `better-sqlite3` needs a real file, so `demo.db` is rebuilt
-— from the imported fixture, in `/tmp`, the one writable path here — on cold
+from the imported fixture, in `/tmp` (the one writable path here), on cold
 start, and reused for the lifetime of that instance. The result is honest
 about what it is: the same "reading a captured fixture, nothing here reaches
-the network" banner the offline CLI shows, covering the same ledger range — a
+the network" banner the offline CLI shows, covering the same ledger range: a
 demo frozen at deploy time, not a live index kept somewhere else.
 
 ### Saying what it cannot show
@@ -302,11 +304,11 @@ every view carries the range, and each dead end says which one it hit.
 | The reader asks for | The page says |
 | --- | --- |
 | a hash in the index | the trace, and that it is in the index |
-| a hash outside the indexed range | the trace, **and** that it is outside the range, which starts at ledger N and runs to M — the index decides what the page can suggest, not what it can explain |
+| a hash outside the indexed range | the trace, **and** that it is outside the range, which starts at ledger N and runs to M; the index decides what the page can suggest, not what it can explain |
 | a hash the source cannot produce | which ledgers that source holds, that anything older is gone from everywhere, and no trace at all |
 | something that is not a hash | that it is not a hash, and that nothing was looked up |
 | anything, with an empty database | that nothing is indexed yet, and the command that fills it |
-| anything, with a gap recorded | the gap's ledger range, and that transfers in there were never seen — which is not the same as never having happened |
+| anything, with a gap recorded | the gap's ledger range, and that transfers in there were never seen, which is not the same as never having happened |
 
 Each of those is [a test](test/web.test.ts) against a real server on a real
 port, because they are the states most likely to rot quietly.
@@ -320,8 +322,8 @@ the RPC server you are pointed at and can change under you.
 ### An empty page does not mean "caught up"
 
 `getEvents` scans **at most 10,000 ledgers per request**, and it does not tell
-you when it stops early. You get `"events": []` — the same answer a quiet
-contract gives — and a cursor sitting at the end of the window it did scan.
+you when it stops early. You get `"events": []` (the same answer a quiet
+contract gives) and a cursor sitting at the end of the window it did scan.
 
 An indexer that sleeps whenever a page comes back empty therefore falls
 *further behind* on every poll, forever, without a single error. The loop here
@@ -347,14 +349,14 @@ curl -s https://soroban-testnet.stellar.org -H 'Content-Type: application/json' 
 # "0017781164605439999-4294967295"  ->  ledger 4139999
 ```
 
-The cursor is a [TOID](src/toid.ts) — 32 bits of ledger, 20 of transaction
-order, 12 of operation order — so the ledger reads straight out of it.
+The cursor is a [TOID](src/toid.ts): 32 bits of ledger, 20 of transaction
+order, 12 of operation order, so the ledger reads straight out of it.
 
 ### A topic filter matches the whole topic array, not a prefix
 
 A one-segment matcher `["transfer"]` matches only events that have *exactly
-one* topic. A Stellar Asset Contract transfer under CAP-67 has four —
-`transfer`, `from`, `to`, and the asset — so the obvious filter matches nothing
+one* topic. A Stellar Asset Contract transfer under CAP-67 has four
+(`transfer`, `from`, `to`, and the asset), so the obvious filter matches nothing
 at all, and "nothing at all" is indistinguishable from an idle contract.
 
 Measured on the two SACs in the shipped config:
@@ -388,8 +390,8 @@ done
 # 4 segments -> 100 events
 ```
 
-The other limits the server enforces — five filters per request, five topic
-matchers and five contract ids per filter, `limit` at most 10,000 — are checked
+The other limits the server enforces (five filters per request, five topic
+matchers and five contract ids per filter, `limit` at most 10,000) are checked
 in [`src/filters.ts`](src/filters.ts) before the first request, so a bad config
 fails on startup naming the limit instead of mid-run with `-32602`.
 
@@ -402,8 +404,8 @@ the server is answering again.
 
 ### There is no backfill, so this database *is* the history
 
-RPC retains a rolling window — 120,960 ledgers, about seven days, on the
-endpoint above — and no method returns events older than that. Not with a
+RPC retains a rolling window (120,960 ledgers, about seven days, on the
+endpoint above), and no method returns events older than that. Not with a
 different cursor, not with a different call. An indexer started today can
 reach back to `oldestLedger` and no further.
 
@@ -425,7 +427,7 @@ happened".
 The window applies to transactions too, and on this endpoint it is the same
 window: a `getTransaction` for a transaction at `oldestLedger + 50` still comes
 back with its full meta, so anything the indexer holds can also be traced.
-That is a property of how the server is configured rather than a guarantee —
+That is a property of how the server is configured rather than a guarantee:
 `transactionRetentionWindow` is a separate setting from the event one, and a
 provider is free to keep transactions for less time than events. Worth checking
 against whichever endpoint you point at, since a proof view built on the
@@ -453,8 +455,8 @@ restart safety, testnet ledgers 4243664-4245664, 400 events per page
 ```
 
 Two databases are filled from the same fixed range of testnet ledgers. One run
-is left alone. The other is killed with **SIGKILL** — no cleanup, no flush,
-nothing a shutdown handler could rescue — restarted, killed again a page later,
+is left alone. The other is killed with **SIGKILL** (no cleanup, no flush,
+nothing a shutdown handler could rescue), restarted, killed again a page later,
 and so on until it finishes by itself. Then the two are compared id by id.
 
 It holds because of one line in [`src/db.ts`](src/db.ts): the events in a
@@ -464,7 +466,7 @@ kill can only land the database on a page boundary. Restarting re-requests from
 the last committed cursor, and the RPC cursor is exclusive, so it continues
 exactly where it left off.
 
-The `id` primary key is the second line of defence rather than the first — it
+The `id` primary key is the second line of defence rather than the first; it
 absorbs an overlap if one ever arrives, which is also what makes changing
 `--limit` between runs harmless.
 
@@ -477,13 +479,13 @@ absorbs an overlap if one ever arrives, which is also what makes changing
 | `tx_hash`, `tx_index`, `op_index` | `tx_hash` is what the proof view will look up |
 | `contract_id`, `type` | |
 | `in_successful_contract_call` | |
-| `topics_xdr` | JSON array of base64 `ScVal` — **not decoded** |
-| `value_xdr` | base64 `ScVal` — **not decoded** |
+| `topics_xdr` | JSON array of base64 `ScVal`, **not decoded** |
+| `value_xdr` | base64 `ScVal`, **not decoded** |
 | `raw` | the whole response object, verbatim |
 
 Storing the XDR unread is the point. A decoder written next week can be wrong,
 get fixed, and be re-run over these rows; a decoder bug costs a query, never a
-re-ingest. And a re-ingest is not always available — the raw bytes are exactly
+re-ingest. And a re-ingest is not always available: the raw bytes are exactly
 the thing the RPC server will not still have in seven days.
 
 ```bash
@@ -525,14 +527,14 @@ x this database was filled with a different filter set (4628a7ee4d1bd698, now
 
 Topic segments are written as symbol names, as `"*"`, or as `"base64:<xdr>"`
 for a topic that is not a symbol; they are encoded to base64 `ScVal` at the
-edge, in [`src/filters.ts`](src/filters.ts). Nothing downstream — not the loop,
-not the schema, not a query — knows a `transfer` from a `deposit`. Indexing a
+edge, in [`src/filters.ts`](src/filters.ts). Nothing downstream (not the loop,
+not the schema, not a query) knows a `transfer` from a `deposit`. Indexing a
 different contract is an edit to that file and a fresh `--db`.
 
 The two contract ids in the shipped config are the testnet Stellar Asset
 Contracts for XLM and for [Circle's testnet
-USDC](https://faucet.circle.com) — the same asset the onboarding examples in
-this repo move — and a [test](test/filters.test.ts) derives both from the asset
+USDC](https://faucet.circle.com), the same asset the onboarding examples in
+this repo move, and a [test](test/filters.test.ts) derives both from the asset
 and the network passphrase rather than trusting the literals, so a wrong-network
 config could not silently point at a contract that happens to exist.
 
@@ -551,12 +553,12 @@ export const registerPoolDecoders = (registry: DecoderRegistry) =>
     notes: [],
   }));
 
-// src/decoders/index.ts — the one line that turns it on
+// src/decoders/index.ts: the one line that turns it on
 registerPoolDecoders(registry);
 ```
 
-Two files, both inside that directory. Everything downstream — the trace
-output, the recent list — consumes a `DecodedEvent` and never asks what kind
+Two files, both inside that directory. Everything downstream (the trace
+output, the recent list) consumes a `DecodedEvent` and never asks what kind
 it is.
 
 That claim is checked rather than promised. [A
@@ -568,8 +570,8 @@ stops being a one-directory change before anyone is relying on it.
 
 Two decisions inside the registry are worth knowing about:
 
-- **A contract id may be `*`.** The obvious key is exact — this contract, this
-  event — and it works for a contract you deployed. It does not work at all for
+- **A contract id may be `*`.** The obvious key is exact (this contract, this
+  event) and it works for a contract you deployed. It does not work at all for
   the Stellar Asset Contract, which is not *a* contract: there is one per
   asset, derived from the asset and the network passphrase, and testnet has
   thousands of them. So the SAC decoders register under `*`, and prove which
@@ -577,7 +579,7 @@ Two decisions inside the registry are worth knowing about:
   first, so a specific contract can always override the general reading.
 - **A decoder may decline.** Any contract can emit an event named `transfer`
   that has nothing to do with the token interface, and two of the committed
-  fixtures are exactly that — a one-topic `transfer` of a contract's own
+  fixtures are exactly that: a one-topic `transfer` of a contract's own
   design, and a three-topic `mint` whose last topic is an address where the
   asset would be. Returning null hands the event back to be shown structurally.
   Decoding it anyway would put a confident wrong sentence on the screen.
@@ -587,7 +589,7 @@ Two decisions inside the registry are worth knowing about:
 [`src/decoders/orderbook.ts`](src/decoders/orderbook.ts) reads a second
 contract: an order book busy on testnet, emitting `rested`, `settled` and
 `top_changed`. It is not a token, it is nobody's standard, and this repository
-did not deploy it — which makes it a fair test of what adding a contract costs.
+did not deploy it, which makes it a fair test of what adding a contract costs.
 The answer was one new file and two lines in
 [`index.ts`](src/decoders/index.ts). **No file in `src/` outside
 `src/decoders/` changed**, and `git diff --stat` says so.
@@ -613,14 +615,14 @@ event carrying `[account, 1787146455005, true, 18038, …]` sits beside a
 storage key `["Order", 1, account, 1787146455005]` and another reading
 `["Level", 1, true, 18038]`. Market, account, order, side and tick each appear
 on both sides of that comparison. The two values that appear in no key are
-kept, shown in the order they arrived, and labelled unnamed — inventing names
+kept, shown in the order they arrived, and labelled unnamed; inventing names
 for them would be the confident wrong sentence this registry exists to avoid.
 
 `top_changed` is the one whose every field is accounted for, and the trace
 above shows why: the ticks the event claims are the before and after of the
 contract's `BestTick` entry in the same transaction. [A
 test](test/orderbook.test.ts) asserts that correspondence against the committed
-fixture rather than trusting the comment — this example's own thesis, turned on
+fixture rather than trusting the comment: this example's own thesis, turned on
 a contract nobody here wrote.
 
 Registered under an exact contract id rather than the wildcard the token
@@ -638,7 +640,7 @@ passphrase, so the claim is settled by deriving it and comparing:
 ```
 
 and when it does not match, the amount stops being formatted as a classic
-asset too — seven decimal places is a fact about a SAC of a classic asset, and
+asset too: seven decimal places is a fact about a SAC of a classic asset, and
 once the contract is unidentified that fact is no longer in evidence:
 
 ```
@@ -668,7 +670,7 @@ once the contract is unidentified that fact is no longer in evidence:
 ```
 
 `--start-ledger` is consulted only when the database has no cursor yet, so
-leaving it in a restart command is harmless — an existing database always
+leaving it in a restart command is harmless; an existing database always
 resumes from where it stopped. Its default differs by mode: live, an indexer
 started now should follow the network from now, so it is `latest`; offline, the
 fixture is the whole world and there is no reason to start at the end of it, so
@@ -721,7 +723,7 @@ npm run capture -- [options]
 
 | Exit | Meaning |
 | --- | --- |
-| `0` | done — reached `--end-ledger`, caught up under `--once`, or traced |
+| `0` | done: reached `--end-ledger`, caught up under `--once`, or traced |
 | `130` | interrupted |
 | `2` | usage or config error, including a start ledger outside retention |
 | `3` | the RPC server is not testnet, or the database is not |
@@ -745,8 +747,8 @@ x no transaction 00000000…00000000 on this RPC server.
 ## What this does not do
 
 - **Decode events it has no decoder for.** The registry covers the token
-  interface and one order book contract. Everything else is shown structurally — topics and value, as they
-  are — rather than guessed at. Adding a contract is
+  interface and one order book contract. Everything else is shown structurally (topics and value, as they
+  are) rather than guessed at. Adding a contract is
   [two files in one directory](#teaching-it-what-the-events-mean).
 - **Decode on the way in.** Events are stored as the XDR they arrived as, and
   decoded on the way out, every time. A decoder fixed next week reads the rows
@@ -757,7 +759,7 @@ x no transaction 00000000…00000000 on this RPC server.
 - **Keep a live index anywhere but where you run `ingest`.** `serve` reads
   whatever database it is pointed at; it does not poll one into existence
   itself. [Deployed](#deploying-a-frozen-slice-of-it), it can only be pointed
-  at a fixture frozen at build time — the same offline path as the CLI, not a
+  at a fixture frozen at build time: the same offline path as the CLI, not a
   live index kept running somewhere else.
 - **Store what it traces.** `trace` reads one transaction from RPC and prints
   it. It never touches the database, and running it twice asks the network
@@ -768,7 +770,7 @@ x no transaction 00000000…00000000 on this RPC server.
   offline database is honest about covering a small range.
 - **Reach further back than the RPC window.** Nothing can, over RPC. An
   archival provider or a data lake is the answer to that question, and pointing
-  `rpcUrl` at one is supported — the ingest would simply have more ledgers to
+  `rpcUrl` at one is supported; the ingest would simply have more ledgers to
   walk.
 - **Survive a testnet reset.** Roughly quarterly, testnet is wiped and ledger
   numbers restart. The stored cursor becomes meaningless; start a new database.
@@ -778,7 +780,7 @@ x no transaction 00000000…00000000 on this RPC server.
 ## Layout
 
 ```
-trace.config.json      the filters — the whole repointing surface
+trace.config.json      the filters: the whole repointing surface
 src/
   network.ts           testnet passphrase and the RPC's own limits, pinned
   filters.ts           the topic DSL, encoding, and the limit checks
@@ -792,7 +794,7 @@ src/
   decoders/
     registry.ts        ** (contract, topic[0]) -> a decoder. Knows no tokens **
     sac.ts             the token interface: transfer, mint, burn, clawback,
-                       fee, approve — and the SAC derivation that checks them
+                       fee, approve, and the SAC derivation that checks them
     orderbook.ts       a second contract, added later: what a repoint costs
     types.ts           what a decoder is handed and must return
     index.ts           the default registry: one line per decoder
@@ -817,18 +819,18 @@ scripts/
   demo.ts              the whole stack, offline
   no-network.ts        replaces fetch with a refusal, imported by the demo
   check-restart.ts     kill it mid-run, restart, compare
-test/                  unit tests, no network — the loop runs against a
+test/                  unit tests, no network: the loop runs against a
                        scripted server, and the decoder against real
                        transactions committed under test/fixtures
 ```
 
 ## References
 
-- [getEvents](https://developers.stellar.org/docs/data/apis/rpc/api-reference/methods/getEvents) — the endpoint, its pagination, and its limits
-- [getTransaction](https://developers.stellar.org/docs/data/apis/rpc/api-reference/methods/getTransaction) — where `resultMetaXdr` comes from
+- [getEvents](https://developers.stellar.org/docs/data/apis/rpc/api-reference/methods/getEvents): the endpoint, its pagination, and its limits
+- [getTransaction](https://developers.stellar.org/docs/data/apis/rpc/api-reference/methods/getTransaction): where `resultMetaXdr` comes from
 - [Ingest events published from a contract](https://developers.stellar.org/docs/build/guides/events/ingest)
-- [CAP-0067](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0067.md) — the event shapes, including classic operations emitting `transfer`
-- [Token interface](https://developers.stellar.org/docs/tokens/token-interface) · [Stellar Asset Contract](https://developers.stellar.org/docs/tokens/stellar-asset-contract) — what the decoders implement
-- [Token Transfer Processor](https://developers.stellar.org/docs/data/indexers/build-your-own/processors/token-transfer-processor) — SDF's Go implementation of these same semantics, and the reference for what the events mean
-- [Reconciling Stellar events](https://stellar.org/blog/developers/reconciling-stellar-events) — on the retention window and what lives outside it
-- [RPC data formats](https://developers.stellar.org/docs/data/apis/rpc/api-reference/structure/data-format) — `xdrFormat: "json"`, which is far easier to read while exploring
+- [CAP-0067](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0067.md): the event shapes, including classic operations emitting `transfer`
+- [Token interface](https://developers.stellar.org/docs/tokens/token-interface) · [Stellar Asset Contract](https://developers.stellar.org/docs/tokens/stellar-asset-contract): what the decoders implement
+- [Token Transfer Processor](https://developers.stellar.org/docs/data/indexers/build-your-own/processors/token-transfer-processor): SDF's Go implementation of these same semantics, and the reference for what the events mean
+- [Reconciling Stellar events](https://stellar.org/blog/developers/reconciling-stellar-events): on the retention window and what lives outside it
+- [RPC data formats](https://developers.stellar.org/docs/data/apis/rpc/api-reference/structure/data-format): `xdrFormat: "json"`, which is far easier to read while exploring
