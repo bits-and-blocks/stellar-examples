@@ -1,0 +1,34 @@
+[package]
+name = "attestation-gate"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = "27.0.6"
+
+[dev-dependencies]
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }
+# Off-chain signer, test side only. The contract never links this: it verifies
+# with the host's ed25519 function. Using a third-party signer in the tests is
+# the point. It proves the contract agrees with something other than itself.
+ed25519-dalek = "2.2.0"
+
+# Deliberately not a `rust-toolchain.toml`. Pinning the toolchain in-repo would
+# make the container download a *different* toolchain than the one it ships,
+# which defeats the point of pinning the image. The image is the toolchain pin.
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
