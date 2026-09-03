@@ -1,0 +1,4 @@
+# Donor keypairs generated during a run, written here so `npm run verify` can
+# be pointed at the account from the previous `npm run onboard`. Throwaway
+# testnet keys, and still never committed.
+.donor-*
