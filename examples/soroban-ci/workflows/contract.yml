@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Formatting, lints, unit tests and a release Wasm build for every Soroban
+# contract in this repository.
+#
+# This file is the subject of examples/soroban-ci. Two byte-identical copies
+# exist: the one that runs, at .github/workflows/soroban-contract.yml, and the
+# one that ships as the example, at examples/soroban-ci/workflows/contract.yml.
+# ci.yml fails if they drift. The example's README explains why there are two.
+
+name: Soroban contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/soroban-*/contract/**"
+      - "examples/soroban-ci/**"
+      - ".github/workflows/soroban-contract.yml"
+  pull_request:
+    paths:
+      - "examples/soroban-*/contract/**"
+      - "examples/soroban-ci/**"
+      - ".github/workflows/soroban-contract.yml"
+  workflow_dispatch:
+
+# This workflow reads code and writes nothing.
+permissions:
+  contents: read
+
+# A new push supersedes the run already in flight for the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Listed, not discovered. A `find` expression that quietly matches
+        # nothing yields an empty matrix, a skipped job and a green tick, which
+        # is exactly how this repo's previous Rust job went unrun for its whole
+        # life. An explicit list cannot fail that way: a wrong path here is a
+        # red job, not an absent one.
+        #
+        # Copying this file into another repository? Replace this list.
+        dir:
+          - examples/soroban-attestation-gate/contract
+          - examples/soroban-reproducible-build/contract
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Toolchain after checkout, not before: a failed checkout should cost
+      # nothing, and the cache below keys off the lockfile in the tree.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # wasm32v1-none rather than wasm32-unknown-unknown. It is the target
+          # the pinned image in soroban-reproducible-build/build.conf builds,
+          # and CI should compile the artifact that actually ships.
+          targets: wasm32v1-none
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ matrix.dir }}
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      - name: Lints
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # --locked on everything. Cargo.lock is committed, so CI should fail on
+      # drift rather than quietly resolving newer dependencies than the ones
+      # the contract was tested and deployed against.
+      - name: Unit tests
+        run: cargo test --locked
+
+      # Last, because it is the only step that proves the contract still builds
+      # for the target it is deployed to. Everything above compiles natively.
+      - name: Release Wasm build
+        run: cargo build --target wasm32v1-none --release --locked

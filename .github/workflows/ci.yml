@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       node: ${{ steps.scan.outputs.node }}
-      rust: ${{ steps.scan.outputs.rust }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,15 +37,24 @@ jobs:
             exit 1
           fi
 
+      - name: Check the soroban-ci example matches the workflow it documents
+        run: |
+          # Two copies exist on purpose: GitHub only runs workflows from
+          # .github/workflows, so the example cannot ship a live one. This step
+          # is what keeps the second copy honest rather than trusting nobody
+          # edits one and forgets the other.
+          if ! diff -u examples/soroban-ci/workflows/contract.yml \
+                      .github/workflows/soroban-contract.yml; then
+            echo "::error::examples/soroban-ci/workflows/contract.yml has drifted from .github/workflows/soroban-contract.yml"
+            exit 1
+          fi
+
       - id: scan
-        name: Build job matrices
+        name: Build the node job matrix
         run: |
           node_dirs=$(find examples -mindepth 2 -maxdepth 2 -name package.json -exec dirname {} \; | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          rust_dirs=$(find examples -mindepth 2 -maxdepth 2 -name Cargo.toml  -exec dirname {} \; | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "node=$node_dirs" >> "$GITHUB_OUTPUT"
-          echo "rust=$rust_dirs" >> "$GITHUB_OUTPUT"
           echo "node: $node_dirs"
-          echo "rust: $rust_dirs"
 
   node:
     name: build ${{ matrix.dir }}
@@ -71,22 +79,3 @@ jobs:
       # unaffected. Anything needing the network belongs in its own script,
       # not here.
       - run: npm test --if-present
-
-  rust:
-    name: build ${{ matrix.dir }}
-    needs: discover
-    if: needs.discover.outputs.rust != '[]'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        dir: ${{ fromJSON(needs.discover.outputs.rust) }}
-    defaults:
-      run:
-        working-directory: ${{ matrix.dir }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - run: cargo build --target wasm32-unknown-unknown --release
