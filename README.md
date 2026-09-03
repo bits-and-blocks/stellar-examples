@@ -2,9 +2,7 @@
 
 Runnable Stellar demos and integration examples from [bits-and-blocks](https://github.com/bits-and-blocks).
 
-Each example is a **self-contained project**: its own dependencies, its own README, its own lockfile. Clone the repo and run one, or copy a single directory out and use it as a starting point. Nothing is shared between examples except the license and CI.
-
-> This is not [`stellar/soroban-examples`](https://github.com/stellar/soroban-examples), the Stellar Development Foundation's canonical Rust smart contract samples. Start there for contract primitives. This repo covers integration-level demos: wallets, onboarding, payments, and the surrounding application plumbing.
+Each example is a self-contained project. Clone the repo and run one, or copy a single directory out and use it as a starting point. Nothing is shared between examples except the license and CI.
 
 ## Examples
 
@@ -25,8 +23,8 @@ cd stellar-examples/examples/<example-name>
 # then follow that example's README
 ```
 
-Every example targets **testnet only**. Network passphrases are pinned to testnet in code so an example cannot accidentally be pointed at mainnet, and no example should ever ask for a mainnet secret key.
+Every example targets testnet only. Network passphrases are pinned to testnet in code so an example cannot accidentally be pointed at mainnet, and no example should ever ask for a mainnet secret key.
 
 ## License
 
-Apache 2.0, see [LICENSE](LICENSE). It covers every example in this repo.
+Apache 2.0, see [LICENSE](LICENSE).
