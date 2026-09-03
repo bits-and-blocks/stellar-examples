@@ -37,6 +37,18 @@ jobs:
             exit 1
           fi
 
+      - name: Check the soroban-ci example matches the workflow it documents
+        run: |
+          # Two copies exist on purpose: GitHub only runs workflows from
+          # .github/workflows, so the example cannot ship a live one. This step
+          # is what keeps the second copy honest rather than trusting nobody
+          # edits one and forgets the other.
+          if ! diff -u examples/soroban-ci/workflows/contract.yml \
+                      .github/workflows/soroban-contract.yml; then
+            echo "::error::examples/soroban-ci/workflows/contract.yml has drifted from .github/workflows/soroban-contract.yml"
+            exit 1
+          fi
+
       - id: scan
         name: Build the node job matrix
         run: |
