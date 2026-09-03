@@ -4,10 +4,9 @@ use soroban_sdk::{contracterror, contractevent, contracttype, Address, BytesN};
 
 /// The buckets a contribution is split across.
 ///
-/// Three generic buckets, not a domain taxonomy. The count and the names are
-/// arbitrary here. What the example demonstrates is that a signed attestation
-/// binds *which* bucket a payout is drawn from, and that binding works the same
-/// at three buckets as at thirty.
+/// The example demonstrates a signed attestation binds *which* bucket a
+/// payout is drawn from, and that binding works the same at three buckets as
+/// at thirty.
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Category {
@@ -42,7 +41,7 @@ pub struct Attestation {
     pub network_id: BytesN<32>,
 }
 
-/// One authority signature, carried as (position in the authority vector,
+/// A single authority signature carried as (position in the authority vector,
 /// signature) rather than a signature per key slot. A named struct rather than
 /// a tuple so the argument is legible in an RPC payload.
 #[contracttype]
@@ -67,7 +66,7 @@ pub enum DataKey {
 }
 
 /// One variant per refusal. Distinct errors are the point: a test asserts
-/// *which* one, and an operator reading a failed transaction learns which door
+/// which one, and an operator reading a failed transaction learns which door
 /// was the wrong one rather than "signature check failed".
 ///
 /// There is deliberately no `AlreadyInitialized`: configuration happens in
