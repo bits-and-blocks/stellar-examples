@@ -1,6 +1,6 @@
 # stellar-examples
 
-Runnable Stellar demos and integration examples from [bits-and-blocks](https://github.com/bits-and-blocks).
+Runnable Stellar demos and integration examples.
 
 Each example is a self-contained project. Clone the repo and run one, or copy a single directory out and use it as a starting point. Nothing is shared between examples except the license and CI.
 
